@@ -21,3 +21,6 @@ __all__ = (
     "fgrad",
     "generate_finitediff_coeffs",
 )
+
+
+__version__ = "0.0.1"
