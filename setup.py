@@ -14,7 +14,7 @@ def _get_version():
                 version = line[line.find("=") + 1 :].strip(" '\"\n")
                 if version:
                     return version
-        raise ValueError("`__version__` not defined in `pytreeclass/__init__.py`")
+        raise ValueError("`__version__` not defined in `finitediffx/__init__.py`")
 
 
 def _parse_requirements(path):
@@ -25,7 +25,7 @@ def _parse_requirements(path):
 
 
 setup(
-    name="pytreeclass",
+    name="FiniteDiffX",
     version=_get_version(),
     url="https://github.com/ASEM000/FiniteDiffX",
     license="MIT",
