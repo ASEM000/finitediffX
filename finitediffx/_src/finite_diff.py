@@ -90,7 +90,7 @@ def _forward_difference(
 
 @ft.partial(jax.jit, static_argnames=("accuracy", "axis", "derivative"))
 def difference(
-    x: jnp.ndarray,
+    array: jnp.ndarray,
     *,
     axis: int = 0,
     accuracy: int = 1,
@@ -142,7 +142,7 @@ def difference(
         # apply backward difference to the last element with accuracy 1
         x_10 = 20.-8. = 12.
     """
-    size = x.shape[axis]
+    size = array.shape[axis]
 
     center_offsets = _generate_central_offsets(derivative, accuracy + 1)
     center_coeffs = generate_finitediff_coeffs(center_offsets, derivative)
@@ -157,7 +157,7 @@ def difference(
     # forward/backward difference for boundary points
     if size >= len(center_offsets):
         return _central_difference(
-            x,
+            array,
             axis=axis,
             left_coeffs=left_coeffs,
             center_coeffs=center_coeffs,
@@ -171,7 +171,7 @@ def difference(
     # difference for interior points
     if size >= len(left_offsets):
         return _forward_difference(
-            x,
+            array,
             axis=axis,
             left_coeffs=left_coeffs,
             right_coeffs=right_coeffs,
@@ -187,7 +187,7 @@ def difference(
 
 @ft.partial(jax.jit, static_argnames=("accuracy"))
 def gradient(
-    x: jnp.ndarray,
+    array: jnp.ndarray,
     *,
     accuracy: int | tuple[int, ...] = 1,
     step_size: float | tuple[float, ...] | jnp.ndarray = 1,
@@ -213,12 +213,12 @@ def gradient(
         >>> numpy.testing.assert_allclose(dZdx, dZdx_true, atol=1e-4)
         >>> numpy.testing.assert_allclose(dZdy, dZdy_true, atol=1e-4)
     """
-    accuracy = _check_and_return(accuracy, x.ndim, "accuracy")
-    step_size = _check_and_return(step_size, x.ndim, "step_size")
+    accuracy = _check_and_return(accuracy, array.ndim, "accuracy")
+    step_size = _check_and_return(step_size, array.ndim, "step_size")
 
     return jnp.stack(
         [
-            difference(x, accuracy=acc, step_size=step, derivative=1, axis=axis)
+            difference(array, accuracy=acc, step_size=step, derivative=1, axis=axis)
             for axis, (acc, step) in enumerate(zip(accuracy, step_size))
         ],
         axis=0,
@@ -227,7 +227,7 @@ def gradient(
 
 @ft.partial(jax.jit, static_argnames=("accuracy"))
 def jacobian(
-    x: jnp.ndarray,
+    array: jnp.ndarray,
     *,
     accuracy: int | tuple[int, ...] = 1,
     step_size: float | tuple[float, ...] | jnp.ndarray = 1,
@@ -257,17 +257,17 @@ def jacobian(
         ...    JF_true = jnp.array([[2 * X * Y, X**2], [5*jnp.ones_like(X), jnp.cos(Y)]])
         ...    npt.assert_allclose(JF, JF_true, atol=1e-7)
     """
-    accuracy = _check_and_return(accuracy, x.ndim - 1, "accuracy")
-    step_size = _check_and_return(step_size, x.ndim - 1, "step_size")
+    accuracy = _check_and_return(accuracy, array.ndim - 1, "accuracy")
+    step_size = _check_and_return(step_size, array.ndim - 1, "step_size")
 
     return jnp.stack(
-        [gradient(xi, accuracy=accuracy, step_size=step_size) for xi in x], axis=0
+        [gradient(xi, accuracy=accuracy, step_size=step_size) for xi in array], axis=0
     )
 
 
 @ft.partial(jax.jit, static_argnames=("accuracy", "keepdims"))
 def divergence(
-    x: jnp.ndarray,
+    array: jnp.ndarray,
     *,
     accuracy: int | tuple[int, ...] = 1,
     step_size: float | tuple[float, ...] = 1,
@@ -296,11 +296,11 @@ def divergence(
         >>> divZ_true = 2*X + 3*Y**2  # (dF1/dx) + (dF2/dy)
         >>> numpy.testing.assert_allclose(divZ, divZ_true, atol=5e-4)
     """
-    accuracy = _check_and_return(accuracy, x.ndim - 1, "accuracy")
-    step_size = _check_and_return(step_size, x.ndim - 1, "step_size")
+    accuracy = _check_and_return(accuracy, array.ndim - 1, "accuracy")
+    step_size = _check_and_return(step_size, array.ndim - 1, "step_size")
 
     result = sum(
-        difference(x[axis], accuracy=acc, step_size=step, derivative=1, axis=axis)
+        difference(array[axis], accuracy=acc, step_size=step, derivative=1, axis=axis)
         for axis, (acc, step) in enumerate(zip(accuracy, step_size))
     )
 
@@ -310,7 +310,7 @@ def divergence(
 
 
 def hessian(
-    x: jnp.ndarray,
+    array: jnp.ndarray,
     *,
     accuracy: int | tuple[int, ...] = 2,
     step_size: float | tuple[float, ...] | jnp.ndarray = 1,
@@ -334,15 +334,15 @@ def hessian(
         >>> H_true = jnp.array([[2 * Y, 2 * X], [2 * X, jnp.zeros_like(X)]])
         >>> npt.assert_allclose(H, H_true, atol=1e-7)
     """
-    accuracy = _check_and_return(accuracy, x.ndim, "accuracy")
-    step_size = _check_and_return(step_size, x.ndim, "step_size")
-    axes = tuple(range(x.ndim))
+    accuracy = _check_and_return(accuracy, array.ndim, "accuracy")
+    step_size = _check_and_return(step_size, array.ndim, "step_size")
+    axes = tuple(range(array.ndim))
     F = dict()
 
     # diag
-    for axis in range(x.ndim):
+    for axis in range(array.ndim):
         F[2 * axis] = difference(
-            x,
+            array,
             accuracy=accuracy[axis],
             step_size=step_size[axis],
             axis=axis,
@@ -352,20 +352,25 @@ def hessian(
     # off-diag
     for ax1, ax2 in combinations(axes, 2):
         F[ax1 + ax2] = difference(
-            difference(x, accuracy=accuracy[ax1], step_size=step_size[ax1], axis=ax1),
+            difference(
+                array, accuracy=accuracy[ax1], step_size=step_size[ax1], axis=ax1
+            ),
             accuracy=accuracy[ax2],
             step_size=step_size[ax2],
             axis=ax2,
         )
 
     return jnp.stack(
-        [jnp.stack([F[ax1 + ax2] for ax2 in range(x.ndim)]) for ax1 in range(x.ndim)]
+        [
+            jnp.stack([F[ax1 + ax2] for ax2 in range(array.ndim)])
+            for ax1 in range(array.ndim)
+        ]
     )
 
 
 @ft.partial(jax.jit, static_argnames=("accuracy"))
 def laplacian(
-    x: jnp.ndarray,
+    array: jnp.ndarray,
     *,
     accuracy: int | tuple[int, ...] = 1,
     step_size: float | tuple[float, ...] | jnp.ndarry = 1,
@@ -387,17 +392,17 @@ def laplacian(
         >>> laplacianZ_true = 12*X**2 + 6*Y
         >>> numpy.testing.assert_allclose(laplacianZ, laplacianZ_true, atol=1e-4)
     """
-    accuracy = _check_and_return(accuracy, x.ndim, "accuracy")
-    step_size = _check_and_return(step_size, x.ndim, "step_size")
+    accuracy = _check_and_return(accuracy, array.ndim, "accuracy")
+    step_size = _check_and_return(step_size, array.ndim, "step_size")
 
     return sum(
-        difference(x, accuracy=acc, step_size=step, derivative=2, axis=axis)
+        difference(array, accuracy=acc, step_size=step, derivative=2, axis=axis)
         for axis, (acc, step) in enumerate(zip(accuracy, step_size))
     )
 
 
 def _curl_2d(
-    x: jnp.ndarray,
+    array: jnp.ndarray,
     *,
     accuracy: int | tuple[int, ...] = 1,
     step_size: float | tuple[float, ...] | jnp.ndarray = 1,
@@ -423,8 +428,8 @@ def _curl_2d(
         >>> F = jnp.stack([F1,F2], axis=0)
         >>> curl = curl_2d(F, accuracy=4, step_size=dx)
     """
-    dF1dY = difference(x[0], accuracy=accuracy[1], step_size=step_size[1], axis=1)
-    dF2dX = difference(x[1], accuracy=accuracy[0], step_size=step_size[0], axis=0)
+    dF1dY = difference(array[0], accuracy=accuracy[1], step_size=step_size[1], axis=1)
+    dF2dX = difference(array[1], accuracy=accuracy[0], step_size=step_size[0], axis=0)
 
     result = dF2dX - dF1dY
 
@@ -435,19 +440,19 @@ def _curl_2d(
 
 
 def _curl_3d(
-    x: jnp.ndarray,
+    array: jnp.ndarray,
     *,
     accuracy: int | tuple[int, ...] = 1,
     step_size: float | tuple[float, ...] | jnp.ndarry = 1,
 ) -> jnp.ndarray:
-    dF1dY = difference(x[0], accuracy=accuracy[1], step_size=step_size[1], axis=1)
-    dF1dZ = difference(x[0], accuracy=accuracy[2], step_size=step_size[2], axis=2)
+    dF1dY = difference(array[0], accuracy=accuracy[1], step_size=step_size[1], axis=1)
+    dF1dZ = difference(array[0], accuracy=accuracy[2], step_size=step_size[2], axis=2)
 
-    dF2dX = difference(x[1], accuracy=accuracy[0], step_size=step_size[0], axis=0)
-    dF2dZ = difference(x[1], accuracy=accuracy[2], step_size=step_size[2], axis=2)
+    dF2dX = difference(array[1], accuracy=accuracy[0], step_size=step_size[0], axis=0)
+    dF2dZ = difference(array[1], accuracy=accuracy[2], step_size=step_size[2], axis=2)
 
-    dF3dX = difference(x[2], accuracy=accuracy[0], step_size=step_size[0], axis=0)
-    dF3dY = difference(x[2], accuracy=accuracy[1], step_size=step_size[1], axis=1)
+    dF3dX = difference(array[2], accuracy=accuracy[0], step_size=step_size[0], axis=0)
+    dF3dY = difference(array[2], accuracy=accuracy[1], step_size=step_size[1], axis=1)
 
     return jnp.stack(
         [
@@ -461,7 +466,7 @@ def _curl_3d(
 
 @ft.partial(jax.jit, static_argnames=("accuracy", "keepdims"))
 def curl(
-    x: jnp.ndarray,
+    array: jnp.ndarray,
     *,
     accuracy: int | tuple[int, ...] = 1,
     step_size: float | tuple[float, ...] | jnp.ndarry = 1,
@@ -490,7 +495,7 @@ def curl(
         >>> F2 = X**4 + Y**3
         >>> F3 = jnp.zeros_like(F1)
         >>> F = jnp.stack([F1,F2,F3], axis=0)
-        >>> curlF = sk.fd.curl(F, step_size=(dx,dy,dz),  accuracy=6)
+        >>> curlF = finitediffx.curl(F, step_size=(dx,dy,dz),  accuracy=6)
         >>> curlF_exact = jnp.stack([F1*0,F1*0, 4*X**3 - 3*Y**2], axis=0)
         >>> npt.assert_allclose(curlF, curlF_exact, atol=1e-7)
 
@@ -504,16 +509,18 @@ def curl(
         >>> curl = curl_2d(F, accuracy=4, step_size=dx)
     """
 
-    accuracy = _check_and_return(accuracy, x.ndim - 1, "accuracy")
-    step_size = _check_and_return(step_size, x.ndim - 1, "step_size")
+    accuracy = _check_and_return(accuracy, array.ndim - 1, "accuracy")
+    step_size = _check_and_return(step_size, array.ndim - 1, "step_size")
 
-    if x.ndim == 4 and x.shape[0] == 3:
-        return _curl_3d(x, accuracy=accuracy, step_size=step_size)
+    if array.ndim == 4 and array.shape[0] == 3:
+        return _curl_3d(array, accuracy=accuracy, step_size=step_size)
 
-    if x.ndim == 3 and x.shape[0] == 2:
-        return _curl_2d(x, accuracy=accuracy, step_size=step_size, keepdims=keepdims)
+    if array.ndim == 3 and array.shape[0] == 2:
+        return _curl_2d(
+            array, accuracy=accuracy, step_size=step_size, keepdims=keepdims
+        )
 
-    msg = f"`curl` is only implemented for 2D and 3D vector fields, got {x.ndim}D"
+    msg = f"`curl` is only implemented for 2D and 3D vector fields, got {array.ndim}D"
     msg += "for 2D vector fields, the leading axis must have a shape=2, "
     msg += "for 3D vector fields, the leading axis must have a shape=3"
     raise ValueError(msg)
