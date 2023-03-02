@@ -103,16 +103,17 @@ def generate_finitediff_coeffs(
         (1.0, -2.0, 1.0)
         # translates to  1*f(x-1) - 2*f(x) + 1*f(x+1)
 
-    See: https://en.wikipedia.org/wiki/Finite_difference_coefficient
+    See:
+        https://en.wikipedia.org/wiki/Finite_difference_coefficient
+        https://web.media.mit.edu/~crtaylor/calculator.html
     """
 
     N = len(offsets)
 
     if derivative >= N:
-        raise ValueError(
-            "Sampling points must be larger than derivative order."
-            f" len(offsets)={len(offsets)} must be less than {derivative}"
-        )
+        msg = "Sampling points must be larger than derivative order."
+        msg += f" len(offsets)={len(offsets)} must be less than {derivative}"
+        raise ValueError(msg)
 
     A = jnp.repeat(jnp.array(offsets)[None, :], repeats=N, axis=0)
     A **= jnp.arange(0, N).reshape(-1, 1)

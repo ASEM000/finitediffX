@@ -1,5 +1,10 @@
 # credits to Mahmoud Asem 2022 @KAIST
-# functions that operate on functions
+
+# This file defines the fgrad function which is a finite difference approximation of jax.grad
+# for first order derivative, finite difference and automatic difference is approximated as the following
+# f(x + Δx) = f(x) + f'(x) Δx + f''(x) Δx^2 / 2 + f'''(x) Δx^3 / 6 + ...
+# f(x + ɛ Δx) = f(x) + f'(x) ɛ Δx + f''(x) ɛ^2 Δx^2 / 2 + f'''(x) ɛ^3 Δx^3 / 6 + ... , where ɛ^2 := 0 and ɛ != 0
+
 
 from __future__ import annotations
 
@@ -106,7 +111,7 @@ def fgrad(
             step_size=step_size,
             derivative=derivative,
         )
-        return ft.wraps(func)(lambda *args, **kwargs: sum(dfunc(*args, **kwargs)))
+        return ft.wraps(func)(lambda *a, **k: sum(dfunc(*a, **k)))
 
     if isinstance(argnums, tuple):
         # return a tuple of derivatives if argnums is a tuple
@@ -121,10 +126,6 @@ def fgrad(
             )
             for argnum in argnums
         ]
-        return ft.wraps(func)(
-            lambda *args, **kwargs: tuple(
-                sum(dfunc(*args, **kwargs)) for dfunc in dfuncs
-            )
-        )
+        return ft.wraps(func)(lambda *a, **k: tuple(sum(df(*a, **k)) for df in dfuncs))
 
     raise ValueError(f"argnums must be an int or a tuple of ints, got {argnums}")

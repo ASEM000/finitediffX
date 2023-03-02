@@ -31,9 +31,9 @@ __all__ = (
 
 
 def _central_difference(
-    x,
+    x: jnp.ndarray,
     *,
-    axis,
+    axis: int,
     left_coeffs,
     center_coeffs,
     right_coeffs,
@@ -514,5 +514,6 @@ def curl(
         return _curl_2d(x, accuracy=accuracy, step_size=step_size, keepdims=keepdims)
 
     msg = f"`curl` is only implemented for 2D and 3D vector fields, got {x.ndim}D"
-    msg += "for 2D vector fields, the leading axis must be 2, for 3D vector fields, the leading axis must be 3"
+    msg += "for 2D vector fields, the leading axis must have a shape=2, "
+    msg += "for 3D vector fields, the leading axis must have a shape=3"
     raise ValueError(msg)
