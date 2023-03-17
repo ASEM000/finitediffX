@@ -20,13 +20,13 @@
 Differentiable finite difference tools in `jax`
 Implements :
 
-- `difference(array, axis, accuracy, step_size, derivative)`
-- `gradient(array, accuracy, step_size)`
-- `jacobian(array, accuracy, step_size)`
-- `divergence(array, accuracy, step_size, keepdims)`
-- `hessian(array, accuracy, step_size)`
-- `laplacian(array, accuracy, step_size)`
-- `curl(array, step_size, keep_dims)`
+- `difference(array, axis, accuracy, step_size, method, derivative)`
+- `gradient(array, accuracy, method, step_size)`
+- `jacobian(array, accuracy, method, step_size)`
+- `divergence(array, accuracy, step_size, method, keepdims)`
+- `hessian(array, accuracy, method, step_size)`
+- `laplacian(array, accuracy, method, step_size)`
+- `curl(array, step_size, method, keep_dims)`
 
 ## 🛠️ Installation<a id="Installation"></a>
 
@@ -69,7 +69,7 @@ F3 = jnp.zeros_like(F1)
 F = jnp.stack([F1, F2, F3], axis=0)
 
 # ∂F1/∂x : differentiate F1 with respect to x (i.e axis=0)
-dF1dx = fdx.difference(F1, axis=0, step_size=dx, accuracy=6)
+dF1dx = fdx.difference(F1, axis=0, step_size=dx, accuracy=6, method="central")
 dF1dx_exact = 2 * X
 npt.assert_allclose(dF1dx, dF1dx_exact, atol=1e-7)
 
@@ -79,27 +79,27 @@ dF2dy_exact = 3 * Y**2
 npt.assert_allclose(dF2dy, dF2dy_exact, atol=1e-7)
 
 # ∇.F : the divergence of F
-divF = fdx.divergence(F, step_size=(dx, dy, dz), keepdims=False, accuracy=6)
+divF = fdx.divergence(F, step_size=(dx, dy, dz), keepdims=False, accuracy=6, method="central")
 divF_exact = 2 * X + 3 * Y**2
 npt.assert_allclose(divF, divF_exact, atol=1e-7)
 
 # ∇F1 : the gradient of F1
-gradF1 = fdx.gradient(F1, step_size=(dx, dy, dz), accuracy=6)
+gradF1 = fdx.gradient(F1, step_size=(dx, dy, dz), accuracy=6, method="central")
 gradF1_exact = jnp.stack([2 * X, 3 * Y**2, 0 * X], axis=0)
 npt.assert_allclose(gradF1, gradF1_exact, atol=1e-7)
 
 # ΔF1 : laplacian of F1
-lapF1 = fdx.laplacian(F1, step_size=(dx, dy, dz), accuracy=6)
+lapF1 = fdx.laplacian(F1, step_size=(dx, dy, dz), accuracy=6, method="central")
 lapF1_exact = 2 + 6 * Y
 npt.assert_allclose(lapF1, lapF1_exact, atol=1e-7)
 
 # ∇xF : the curl of F
-curlF = fdx.curl(F, step_size=(dx, dy, dz), accuracy=6)
+curlF = fdx.curl(F, step_size=(dx, dy, dz), accuracy=6, method="central")
 curlF_exact = jnp.stack([F1 * 0, F1 * 0, 4 * X**3 - 3 * Y**2], axis=0)
 npt.assert_allclose(curlF, curlF_exact, atol=1e-7)
 
 # Jacobian of F
-JF = fdx.jacobian(F, accuracy=4, step_size=(dx, dy, dz))
+JF = fdx.jacobian(F, accuracy=4, step_size=(dx, dy, dz), method="central")
 JF_exact = jnp.array(
     [
         [2 * X, 3 * Y**2, jnp.zeros_like(X)],
@@ -110,7 +110,7 @@ JF_exact = jnp.array(
 npt.assert_allclose(JF, JF_exact, atol=1e-7)
 
 # Hessian of F1
-HF1 = fdx.hessian(F1, accuracy=4, step_size=(dx, dy, dz))
+HF1 = fdx.hessian(F1, accuracy=4, step_size=(dx, dy, dz), method="central")
 HF1_exact = jnp.array(
     [
         [
