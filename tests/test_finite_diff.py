@@ -21,7 +21,7 @@ from finitediffx._src.utils import (
 )
 
 
-def test_difference():
+def test_difference_central():
     with enable_x64():
         x, y = [jnp.linspace(0, 1, 1000)] * 2
         dx, dy = x[1] - x[0], y[1] - y[0]
@@ -58,7 +58,84 @@ def test_difference():
         )
 
 
-def test_divergence():
+def test_difference_forward():
+    with enable_x64():
+        x, y = [jnp.linspace(0, 1, 1000)] * 2
+        dx, dy = x[1] - x[0], y[1] - y[0]
+        X, Y = jnp.meshgrid(x, y, indexing="ij")
+        F = jnp.sin(X) * jnp.cos(Y)
+        dFdX = difference(F, step_size=dx, axis=0, accuracy=3)
+        npt.assert_allclose(dFdX, jnp.cos(X) * jnp.cos(Y), rtol=1e-3)
+
+        dFdY = difference(F, step_size=dy, axis=1, accuracy=3)
+        npt.assert_allclose(dFdY, -jnp.sin(X) * jnp.sin(Y), atol=1e-7)
+
+        # 1 4 6 3 2
+        # left = (4-1), (6-4), (3-6), (2-3)-> forward difference
+        # right = (2-3) = -1 -> backward difference
+        npt.assert_allclose(
+            difference(jnp.array([1, 4, 6, 3, 2]), accuracy=1, axis=0, derivative=1, method="forward"),
+            jnp.array([3., 2., -3., -1., -1.]),
+        )
+
+        # 1 4 6 3 2 4
+        # Forward Coeffs -> [-1.5  2.  -0.5] (0, 1, 2)
+        # Backward Coeffs -> [ 0.5 -2.   1.5] (-2, -1, 0)
+        npt.assert_allclose(
+            difference(jnp.array([1, 4, 6, 3, 2, 4]), accuracy=2, axis=0, derivative=1, method="forward"),
+            jnp.array([3.5, 4.5, -4.0, -2.5, 0.0, 3.5]),
+        )
+
+        # no central difference possible
+        x = jnp.array([1.2, 1.4])
+        # Forward Coeffs -> [-1 1] (0, 1)
+        # Backward Coeffs -> [1 -1] (-1, 0)
+        npt.assert_allclose(
+            difference(x, accuracy=1, axis=0, derivative=1, method="forward"), jnp.array([0.2, 0.2])
+        )
+
+
+def test_difference_backward():
+    with enable_x64():
+        x, y = [jnp.linspace(0, 1, 1000)] * 2
+        dx, dy = x[1] - x[0], y[1] - y[0]
+        X, Y = jnp.meshgrid(x, y, indexing="ij")
+        F = jnp.sin(X) * jnp.cos(Y)
+        dFdX = difference(F, step_size=dx, axis=0, accuracy=3)
+        npt.assert_allclose(dFdX, jnp.cos(X) * jnp.cos(Y), rtol=1e-3)
+
+        dFdY = difference(F, step_size=dy, axis=1, accuracy=3)
+        npt.assert_allclose(dFdY, -jnp.sin(X) * jnp.sin(Y), atol=1e-7)
+
+        # 1 4 6 3 2
+        # left = (4-1)-> forward difference
+        # right = (4-1), (6-4), (3-6), (2-3) = -1 -> backward difference
+        npt.assert_allclose(
+            difference(jnp.array([1, 4, 6, 3, 2]), accuracy=1, axis=0, derivative=1, method="backward"),
+            jnp.array([3., 3., 2., -3., -1.]),
+        )
+
+        # 1 4 6 3 2 4
+        # Forward Coeffs -> [-1.5  2.  -0.5] (0, 1, 2)
+        # Backward Coeffs -> [ 0.5 -2.   1.5] (-2, -1, 0)
+        npt.assert_allclose(
+            difference(jnp.array([1, 4, 6, 3, 2, 4]), accuracy=2, axis=0, derivative=1, method="backward"),
+            jnp.array([3.5, 4.5, 1.5, -5.5, 0.0, 3.5]),
+        )
+
+        # no central difference possible
+        x = jnp.array([1.2, 1.4])
+        # Forward Coeffs -> [-1 1] (0, 1)
+        # Backward Coeffs -> [1 -1] (-1, 0)
+        npt.assert_allclose(
+            difference(x, accuracy=1, axis=0, derivative=1, method="backward"), jnp.array([0.2, 0.2])
+        )
+
+
+@pytest.mark.parametrize(
+        "method", ("central", "forward","backward")
+)
+def test_divergence(method):
     with enable_x64():
         x, y = [jnp.linspace(0, 1, 100)] * 2
         dx, dy = x[1] - x[0], y[1] - y[0]
@@ -66,39 +143,52 @@ def test_divergence():
         F1 = X**2 + Y**3
         F2 = X**4 + Y**3
         F = jnp.stack([F1, F2], axis=0)  # 2D vector field F = (F1, F2)
-        divZ = divergence(F, step_size=(dx, dy), accuracy=7, keepdims=False)
+        divZ = divergence(F, step_size=(dx, dy), accuracy=7, method=method, keepdims=False)
         divZ_true = 2 * X + 3 * Y**2  # (dF1/dx) + (dF2/dy)
         npt.assert_allclose(divZ, divZ_true, atol=5e-7)
 
-        divZ = divergence(F, step_size=(dx, dy), accuracy=7, keepdims=True)
+        divZ = divergence(F, step_size=(dx, dy), accuracy=7,  method=method, keepdims=True)
         divZ_true = 2 * X + 3 * Y**2  # (dF1/dx) + (dF2/dy)
         npt.assert_allclose(divZ, divZ_true[None], atol=5e-7)
 
 
-def test_gradient():
+@pytest.mark.parametrize(
+        "method", ("central", "forward","backward")
+)
+def test_gradient(method):
     with enable_x64():
         x, y = [jnp.linspace(0, 1, 100)] * 2
         dx, dy = x[1] - x[0], y[1] - y[0]
         X, Y = jnp.meshgrid(x, y, indexing="ij")
         F = X**2 + Y**3
-        gradF = gradient(F, step_size=(dx, dy), accuracy=7)
+        gradF = gradient(F, step_size=(dx, dy), accuracy=7, method=method)
         gradF_true = jnp.stack([2 * X, 3 * Y**2], axis=0)
         npt.assert_allclose(gradF, gradF_true, atol=5e-7)
 
 
-def test_laplacian():
+@pytest.mark.parametrize(
+        "method,atol", [
+            ("central", 1e-7),
+            ("forward", 1e-6),
+            ("backward",1e-7)
+        ]
+)
+def test_laplacian(method, atol):
     with enable_x64():
         # needs float64 for higher accuracy
         x, y = [jnp.linspace(0, 1, 100)] * 2
         dx, dy = x[1] - x[0], y[1] - y[0]
         X, Y = jnp.meshgrid(x, y, indexing="ij")
         Z = X**4 + Y**3
-        laplacianZ = laplacian(Z, step_size=(dx, dy), accuracy=10)
+        laplacianZ = laplacian(Z, step_size=(dx, dy), accuracy=10, method=method)
         laplacianZ_true = 12 * X**2 + 6 * Y
-        npt.assert_allclose(laplacianZ, laplacianZ_true, atol=1e-7)
+        npt.assert_allclose(laplacianZ, laplacianZ_true, atol=atol)
 
 
-def test_curl():
+@pytest.mark.parametrize(
+        "method", ("central", "forward","backward")
+)
+def test_curl(method):
     with enable_x64():
         x, y, z = [jnp.linspace(0, 1, 100)] * 3
         dx, dy, dz = x[1] - x[0], y[1] - y[0], z[1] - z[0]
@@ -107,7 +197,7 @@ def test_curl():
         F2 = X**4 + Y**3
         F3 = 0 * Z
         F = jnp.stack([F1, F2, F3], axis=0)
-        curl_Z = curl(F, step_size=(dx, dy, dz), accuracy=5)
+        curl_Z = curl(F, step_size=(dx, dy, dz), accuracy=5, method=method)
 
         F1 = 0 * X
         F2 = 0 * Y
@@ -122,17 +212,20 @@ def test_curl():
         F1 = jnp.sin(Y)
         F2 = jnp.cos(X)
         F = jnp.stack([F1, F2], axis=0)
-        res = curl(F, accuracy=4, step_size=dx, keepdims=False)
+        res = curl(F, accuracy=4, step_size=dx, method=method, keepdims=False)
         npt.assert_allclose(res, -jnp.sin(X) - jnp.cos(Y), atol=1e-4)
 
-        res = curl(F, accuracy=4, step_size=dx, keepdims=True)
+        res = curl(F, accuracy=4, step_size=dx, method=method, keepdims=True)
         npt.assert_allclose(res[0], -jnp.sin(X) - jnp.cos(Y), atol=1e-4)
 
     with pytest.raises(ValueError):
-        curl(F[None], accuracy=4, step_size=dx, keepdims=True)
+        curl(F[None], accuracy=4, step_size=dx, method=method, keepdims=True)
 
 
-def test_jacobian():
+@pytest.mark.parametrize(
+        "method", ("central", "forward","backward")
+)
+def test_jacobian(method):
     with enable_x64():
         x, y = [jnp.linspace(-1, 1, 100)] * 2
         dx, dy = x[1] - x[0], y[1] - y[0]
@@ -140,7 +233,7 @@ def test_jacobian():
         F1 = X**2 * Y
         F2 = 5 * X + jnp.sin(Y)
         F = jnp.stack([F1, F2], axis=0)
-        JF = jacobian(F, accuracy=4, step_size=(dx, dy))
+        JF = jacobian(F, accuracy=4, method=method, step_size=(dx, dy))
         JF_true = jnp.array([[2 * X * Y, X**2], [5 * jnp.ones_like(X), jnp.cos(Y)]])
         npt.assert_allclose(JF, JF_true, atol=1e-7)
 
@@ -152,7 +245,7 @@ def test_jacobian():
         Y3 = 4 * X2**2 - 2 * X3
         Y4 = X3 * jnp.sin(X1)
         Y = jnp.stack([Y1, Y2, Y3, Y4], axis=0)
-        JY = jacobian(Y, accuracy=5, step_size=(dx1, dx2, dx3))
+        JY = jacobian(Y, accuracy=5, step_size=(dx1, dx2, dx3), method=method)
 
         JY_true = jnp.array(
             [
@@ -166,24 +259,27 @@ def test_jacobian():
         npt.assert_allclose(JY, JY_true, rtol=1e-3, atol=1e-5)
 
 
-def test_hessian():
+@pytest.mark.parametrize(
+        "method", ("central", "forward","backward")
+)
+def test_hessian(method):
     with enable_x64():
         x, y = [jnp.linspace(-1, 1, 100)] * 2
         dx, dy = x[1] - x[0], y[1] - y[0]
         X, Y = jnp.meshgrid(x, y, indexing="ij")
 
         F = X**2 * Y
-        H = hessian(F, accuracy=4, step_size=(dx, dy))
+        H = hessian(F, accuracy=4, step_size=(dx, dy), method=method)
         H_true = jnp.array([[2 * Y, 2 * X], [2 * X, jnp.zeros_like(X)]])
         npt.assert_allclose(H, H_true, atol=1e-7)
 
         F = X**3 + Y**3
-        H = hessian(F, accuracy=4, step_size=(dx, dy))
+        H = hessian(F, accuracy=4, step_size=(dx, dy), method=method)
         H_true = jnp.array([[6 * X, jnp.zeros_like(X)], [jnp.zeros_like(X), 6 * Y]])
         npt.assert_allclose(H, H_true, atol=1e-7)
 
         F = jnp.sin(X) + jnp.cos(Y)
-        H = hessian(F, accuracy=4, step_size=(dx, dy))
+        H = hessian(F, accuracy=4, step_size=(dx, dy), method=method)
         H_true = jnp.array(
             [[-jnp.sin(X), jnp.zeros_like(X)], [jnp.zeros_like(X), -jnp.cos(Y)]]
         )
