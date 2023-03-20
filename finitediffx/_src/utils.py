@@ -9,7 +9,7 @@ import jax.numpy as jnp
 def _check_and_return(value, ndim, name):
     if isinstance(value, int):
         return (value,) * ndim
-    elif isinstance(value, jnp.ndarray):
+    elif isinstance(value, jax.Array):
         return jnp.repeat(value, ndim)
     elif isinstance(value, tuple):
         assert len(value) == ndim, f"{name} must be a tuple of length {ndim}"

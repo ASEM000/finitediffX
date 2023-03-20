@@ -11,6 +11,7 @@ from __future__ import annotations
 import functools as ft
 from typing import Callable
 
+import jax
 import jax.numpy as jnp
 
 from finitediffx._src.utils import _generate_central_offsets, generate_finitediff_coeffs
@@ -19,7 +20,7 @@ from finitediffx._src.utils import _generate_central_offsets, generate_finitedif
 def _evaluate_func_at_shifted_steps_along_argnum(
     func: Callable,
     *,
-    coeffs: jnp.ndarray,
+    coeffs: jax.Array,
     offsets: tuple[float | int, ...],
     argnum: int,
     step_size: float,

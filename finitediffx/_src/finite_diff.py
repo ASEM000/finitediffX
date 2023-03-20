@@ -31,7 +31,7 @@ __all__ = (
 
 
 def _central_difference(
-    x: jnp.ndarray,
+    x: jax.Array,
     *,
     axis: int,
     left_coeffs,
@@ -138,17 +138,16 @@ def _backward_difference(
     return jnp.concatenate([left_x, right_x], axis=axis)
 
 
-
 @ft.partial(jax.jit, static_argnames=("accuracy", "axis", "derivative", "method"))
 def difference(
-    array: jnp.ndarray,
+    array: jax.Array,
     *,
     axis: int = 0,
     accuracy: int = 1,
-    step_size: float | jnp.ndarray = 1,
+    step_size: float | jax.Array = 1,
     derivative: int = 1,
-    method: str = "central"
-) -> jnp.ndarray:
+    method: str = "central",
+) -> jax.Array:
     """Compute the finite difference derivative along a given axis with a given accuracy
     using central difference for interior points and forward/backward difference for boundary points
     Similar to np.gradient, but with the option to specify accuracy, derivative and step size
@@ -220,7 +219,7 @@ def difference(
             right_offsets=right_offsets,
         ) / (step_size**derivative)
 
-    elif method == "central" and size >= len(left_offsets):
+    if method == "central" and size >= len(left_offsets):
         # if size < len(center_offsets), use forward/backward
         # difference for interior points
         # if size >= len(left_offsets):
@@ -232,7 +231,8 @@ def difference(
             left_offsets=left_offsets,
             right_offsets=right_offsets,
         ) / (step_size**derivative)
-    elif method == "forward" and size >= len(left_offsets):
+
+    if method == "forward" and size >= len(left_offsets):
         return _forward_difference(
             array,
             axis=axis,
@@ -242,7 +242,7 @@ def difference(
             right_offsets=right_offsets,
         ) / (step_size**derivative)
 
-    elif method == "backward" and size >= len(right_offsets):
+    if method == "backward" and size >= len(right_offsets):
         return _backward_difference(
             array,
             axis=axis,
@@ -252,22 +252,21 @@ def difference(
             right_offsets=right_offsets,
         ) / (step_size**derivative)
 
-    else:
-        msg = f"Size of the array along axis {axis} is smaller than the number of points required"
-        msg += f" for the accuracy {accuracy} and derivative {derivative} requested"
-        msg += f".\nSize must be larger than {len(left_offsets)}, but got {size}"
-        msg += f".\nMethod should be 'central', 'forward', 'backward', but got {method}"
-        raise ValueError(msg)
+    msg = f"Size of the array along axis {axis} is smaller than the number of points required"
+    msg += f" for the accuracy {accuracy} and derivative {derivative} requested"
+    msg += f".\nSize must be larger than {len(left_offsets)}, but got {size}"
+    msg += f".\nMethod should be 'central', 'forward', 'backward', but got {method}"
+    raise ValueError(msg)
 
 
 @ft.partial(jax.jit, static_argnames=("accuracy", "method"))
 def gradient(
-    array: jnp.ndarray,
+    array: jax.Array,
     *,
     accuracy: int | tuple[int, ...] = 1,
-    step_size: float | tuple[float, ...] | jnp.ndarray = 1,
-    method: str = "central"
-) -> jnp.ndarray:
+    step_size: float | tuple[float, ...] | jax.Array = 1,
+    method: str = "central",
+) -> jax.Array:
     """Compute the ∇F of input array where F is a scalar function of x and
     returns vectors of the same shape as x stacked along the first axis.
 
@@ -295,7 +294,14 @@ def gradient(
 
     return jnp.stack(
         [
-            difference(array, accuracy=acc, step_size=step, derivative=1, axis=axis, method=method)
+            difference(
+                array,
+                accuracy=acc,
+                step_size=step,
+                derivative=1,
+                axis=axis,
+                method=method,
+            )
             for axis, (acc, step) in enumerate(zip(accuracy, step_size))
         ],
         axis=0,
@@ -304,12 +310,12 @@ def gradient(
 
 @ft.partial(jax.jit, static_argnames=("accuracy", "method"))
 def jacobian(
-    array: jnp.ndarray,
+    array: jax.Array,
     *,
     accuracy: int | tuple[int, ...] = 1,
-    step_size: float | tuple[float, ...] | jnp.ndarray = 1,
-    method: str = "central"
-) -> jnp.ndarray:
+    step_size: float | tuple[float, ...] | jax.Array = 1,
+    method: str = "central",
+) -> jax.Array:
     """Compute the ∂Fi/∂xj of input array where F is a vector function of x and
     returns vectors of the same shape as x stacked along the first axis.
 
@@ -340,19 +346,23 @@ def jacobian(
     step_size = _check_and_return(step_size, array.ndim - 1, "step_size")
 
     return jnp.stack(
-        [gradient(xi, accuracy=accuracy, step_size=step_size, method=method) for xi in array], axis=0
+        [
+            gradient(xi, accuracy=accuracy, step_size=step_size, method=method)
+            for xi in array
+        ],
+        axis=0,
     )
 
 
 @ft.partial(jax.jit, static_argnames=("accuracy", "method", "keepdims"))
 def divergence(
-    array: jnp.ndarray,
+    array: jax.Array,
     *,
     accuracy: int | tuple[int, ...] = 1,
     step_size: float | tuple[float, ...] = 1,
     keepdims: bool = True,
-    method: str = "central"
-) -> jnp.ndarray:
+    method: str = "central",
+) -> jax.Array:
     """Compute the ∇.F of input array where F is a vector field whose components are the first axis of x
     and returns a scalar field
 
@@ -381,7 +391,14 @@ def divergence(
     step_size = _check_and_return(step_size, array.ndim - 1, "step_size")
 
     result = sum(
-        difference(array[axis], accuracy=acc, step_size=step, derivative=1, axis=axis, method=method)
+        difference(
+            array[axis],
+            accuracy=acc,
+            step_size=step,
+            derivative=1,
+            axis=axis,
+            method=method,
+        )
         for axis, (acc, step) in enumerate(zip(accuracy, step_size))
     )
 
@@ -392,12 +409,12 @@ def divergence(
 
 @ft.partial(jax.jit, static_argnames=("accuracy", "method"))
 def hessian(
-    array: jnp.ndarray,
+    array: jax.Array,
     *,
     accuracy: int | tuple[int, ...] = 2,
-    step_size: float | tuple[float, ...] | jnp.ndarray = 1,
-    method: str = "central"
-) -> jnp.ndarray:
+    step_size: float | tuple[float, ...] | jax.Array = 1,
+    method: str = "central",
+) -> jax.Array:
     """Compute hessian of F: R^m -> R
 
     Args:
@@ -438,7 +455,11 @@ def hessian(
     for ax1, ax2 in combinations(axes, 2):
         F[ax1 + ax2] = difference(
             difference(
-                array, accuracy=accuracy[ax1], step_size=step_size[ax1], method=method,axis=ax1
+                array,
+                accuracy=accuracy[ax1],
+                step_size=step_size[ax1],
+                method=method,
+                axis=ax1,
             ),
             accuracy=accuracy[ax2],
             step_size=step_size[ax2],
@@ -456,12 +477,12 @@ def hessian(
 
 @ft.partial(jax.jit, static_argnames=("accuracy", "method"))
 def laplacian(
-    array: jnp.ndarray,
+    array: jax.Array,
     *,
     accuracy: int | tuple[int, ...] = 1,
-    step_size: float | tuple[float, ...] | jnp.ndarray = 1,
-    method: str = "central"
-) -> jnp.ndarray:
+    step_size: float | tuple[float, ...] | jax.Array = 1,
+    method: str = "central",
+) -> jax.Array:
     """Compute the ΔF of input array.
     Args:
         x: input array
@@ -484,19 +505,21 @@ def laplacian(
     step_size = _check_and_return(step_size, array.ndim, "step_size")
 
     return sum(
-        difference(array, accuracy=acc, step_size=step, derivative=2, method=method, axis=axis)
+        difference(
+            array, accuracy=acc, step_size=step, derivative=2, method=method, axis=axis
+        )
         for axis, (acc, step) in enumerate(zip(accuracy, step_size))
     )
 
 
 def _curl_2d(
-    array: jnp.ndarray,
+    array: jax.Array,
     *,
     accuracy: int | tuple[int, ...] = 1,
-    step_size: float | tuple[float, ...] | jnp.ndarray = 1,
+    step_size: float | tuple[float, ...] | jax.Array = 1,
     method: str = "central",
     keepdims: bool = True,
-) -> jnp.ndarray:
+) -> jax.Array:
     """Compute the ∇×F of input array where F is a vector field whose components are the first axis of x
     and returns a vector field
 
@@ -518,8 +541,12 @@ def _curl_2d(
         >>> F = jnp.stack([F1,F2], axis=0)
         >>> curl = curl_2d(F, accuracy=4, step_size=dx)
     """
-    dF1dY = difference(array[0], accuracy=accuracy[1], step_size=step_size[1], method=method, axis=1)
-    dF2dX = difference(array[1], accuracy=accuracy[0], step_size=step_size[0], method=method, axis=0)
+    dF1dY = difference(
+        array[0], accuracy=accuracy[1], step_size=step_size[1], method=method, axis=1
+    )
+    dF2dX = difference(
+        array[1], accuracy=accuracy[0], step_size=step_size[0], method=method, axis=0
+    )
 
     result = dF2dX - dF1dY
 
@@ -530,20 +557,32 @@ def _curl_2d(
 
 
 def _curl_3d(
-    array: jnp.ndarray,
+    array: jax.Array,
     *,
     accuracy: int | tuple[int, ...] = 1,
     step_size: float | tuple[float, ...] | jnp.ndarry = 1,
     method: str = "central",
-) -> jnp.ndarray:
-    dF1dY = difference(array[0], accuracy=accuracy[1], step_size=step_size[1], method=method, axis=1)
-    dF1dZ = difference(array[0], accuracy=accuracy[2], step_size=step_size[2], method=method, axis=2)
+) -> jax.Array:
+    dF1dY = difference(
+        array[0], accuracy=accuracy[1], step_size=step_size[1], method=method, axis=1
+    )
+    dF1dZ = difference(
+        array[0], accuracy=accuracy[2], step_size=step_size[2], method=method, axis=2
+    )
 
-    dF2dX = difference(array[1], accuracy=accuracy[0], step_size=step_size[0], method=method, axis=0)
-    dF2dZ = difference(array[1], accuracy=accuracy[2], step_size=step_size[2], method=method, axis=2)
+    dF2dX = difference(
+        array[1], accuracy=accuracy[0], step_size=step_size[0], method=method, axis=0
+    )
+    dF2dZ = difference(
+        array[1], accuracy=accuracy[2], step_size=step_size[2], method=method, axis=2
+    )
 
-    dF3dX = difference(array[2], accuracy=accuracy[0], step_size=step_size[0], method=method, axis=0)
-    dF3dY = difference(array[2], accuracy=accuracy[1], step_size=step_size[1], method=method, axis=1)
+    dF3dX = difference(
+        array[2], accuracy=accuracy[0], step_size=step_size[0], method=method, axis=0
+    )
+    dF3dY = difference(
+        array[2], accuracy=accuracy[1], step_size=step_size[1], method=method, axis=1
+    )
 
     return jnp.stack(
         [
@@ -557,14 +596,13 @@ def _curl_3d(
 
 @ft.partial(jax.jit, static_argnames=("accuracy", "method", "keepdims"))
 def curl(
-    array: jnp.ndarray,
+    array: jax.Array,
     *,
     accuracy: int | tuple[int, ...] = 1,
-    step_size: float | tuple[float, ...] | jnp.ndarray = 1,
+    step_size: float | tuple[float, ...] | jax.Array = 1,
     method: str = "central",
     keepdims: bool = True,
-    
-) -> jnp.ndarray:
+) -> jax.Array:
     """Compute the ∇×F of input array where F is a vector field whose components are the first axis of x
     and returns a vector field
 
@@ -611,7 +649,11 @@ def curl(
 
     if array.ndim == 3 and array.shape[0] == 2:
         return _curl_2d(
-            array, accuracy=accuracy, step_size=step_size, method=method, keepdims=keepdims
+            array,
+            accuracy=accuracy,
+            step_size=step_size,
+            method=method,
+            keepdims=keepdims,
         )
 
     msg = f"`curl` is only implemented for 2D and 3D vector fields, got {array.ndim}D"

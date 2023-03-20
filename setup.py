@@ -36,11 +36,7 @@ setup(
     author_email="asem00@kaist.ac.kr",
     keywords="python jax",
     packages=find_namespace_packages(exclude=['examples", "tests","experimental']),
-    install_requires=_parse_requirements(
-        os.path.join(_CURRENT_DIR, "requirements", "requirements.txt")
-    ),
-    # tests_require=_parse_requirements(
-    #     os.path.join(_CURRENT_DIR, 'requirements', 'requirements-test.txt')),
+    install_requires=["jax>=0.4.0"],
     zip_safe=False,  # Required for full installation.
     python_requires=">=3.8",
     classifiers=[
