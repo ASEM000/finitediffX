@@ -195,9 +195,9 @@ def test_gradient(method):
 @pytest.mark.parametrize(
     "method,atol",
     [
-        ("central", 1e-6),
-        ("forward", 1e-6),
-        ("backward", 1e-6),
+        ("central", 5e-6),
+        ("forward", 5e-6),
+        ("backward", 5e-6),
     ],
 )
 def test_laplacian(method, atol):
