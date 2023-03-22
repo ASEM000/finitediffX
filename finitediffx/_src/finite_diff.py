@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import functools as ft
 from itertools import combinations
+from typing import Literal
 
 import jax
 import jax.numpy as jnp
@@ -29,18 +30,20 @@ __all__ = (
     "divergence",
 )
 
+MethodKind = Literal["central", "forward", "backward"]
+
 
 def _central_difference(
     x: jax.Array,
     *,
     axis: int,
-    left_coeffs,
-    center_coeffs,
-    right_coeffs,
-    left_offsets,
-    center_offsets,
-    right_offsets,
-):
+    left_coeffs: tuple[float, ...],
+    center_coeffs: tuple[float, ...],
+    right_coeffs: tuple[float, ...],
+    left_offsets: tuple[float, ...],
+    center_offsets: tuple[float, ...],
+    right_offsets: tuple[float, ...],
+) -> jax.Array:
     # offset defines the position of the point to be used in the finite difference
     # and coeff defines the coefficient to be used in the finite difference
     # for example, if we have a 5 point stencil for first derivative, the
@@ -79,14 +82,14 @@ def _central_difference(
 
 
 def _central_difference_edge(
-    x,
+    x: jax.Array,
     *,
-    axis,
-    left_coeffs,
-    right_coeffs,
-    left_offsets,
-    right_offsets,
-):
+    axis: int,
+    left_coeffs: tuple[float, ...],
+    right_coeffs: tuple[float, ...],
+    left_offsets: tuple[float, ...],
+    right_offsets: tuple[float, ...],
+) -> jax.Array:
     size = x.shape[axis]
     sliced = ft.partial(jax.lax.slice_in_dim, x, axis=axis)
 
@@ -104,14 +107,14 @@ def _central_difference_edge(
 
 
 def _forward_difference(
-    x,
+    x: jax.Array,
     *,
-    axis,
-    left_coeffs,
-    right_coeffs,
-    left_offsets,
-    right_offsets,
-):
+    axis: int,
+    left_coeffs: tuple[float, ...],
+    right_coeffs: tuple[float, ...],
+    left_offsets: tuple[float, ...],
+    right_offsets: tuple[float, ...],
+) -> jax.Array:
     size = x.shape[axis]
     sliced = ft.partial(jax.lax.slice_in_dim, x, axis=axis)
 
@@ -129,13 +132,13 @@ def _forward_difference(
 
 
 def _backward_difference(
-    x,
+    x: jax.Array,
     *,
-    axis,
-    left_coeffs,
-    right_coeffs,
-    left_offsets,
-    right_offsets,
+    axis: int,
+    left_coeffs: tuple[float, ...],
+    right_coeffs: tuple[float, ...],
+    left_offsets: tuple[float, ...],
+    right_offsets: tuple[float, ...],
 ):
     size = x.shape[axis]
     sliced = ft.partial(jax.lax.slice_in_dim, x, axis=axis)
@@ -161,7 +164,7 @@ def difference(
     accuracy: int = 1,
     step_size: float | jax.Array = 1,
     derivative: int = 1,
-    method: str = "central",
+    method: MethodKind = "central",
 ) -> jax.Array:
     """Compute the finite difference derivative along a given axis with a given accuracy
     using central difference for interior points and forward/backward difference for boundary points
@@ -180,12 +183,13 @@ def difference(
 
     Example:
         >>> # dydx of a 2D array
+        >>> import finitediffx as fdx
         >>> x, y = [jnp.linspace(0, 1, 100)] * 2
         >>> dx, dy = x[1] - x[0], y[1] - y[0]
         >>> X, Y = jnp.meshgrid(x, y, indexing="ij")
         >>> F =  jnp.sin(X) * jnp.cos(Y)
-        >>> dFdX = difference(F, step_size=dx, axis=0, accuracy=3, method="central")
-        >>> dFdXdY = difference(dFdX, step_size=dy, axis=1, accuracy=3, method="central")
+        >>> dFdX = fdx.difference(F, step_size=dx, axis=0, accuracy=3, method="central")
+        >>> dFdXdY = fdx.difference(dFdX, step_size=dy, axis=1, accuracy=3, method="central")
 
         >>> # 1d finite difference derivative
         >>> x = jnp.array([1.2, 1.3, 2.2, 3., 4.5, 5.5, 6., 7., 8., 20.])
@@ -285,7 +289,7 @@ def gradient(
     *,
     accuracy: int | tuple[int, ...] = 1,
     step_size: float | tuple[float, ...] | jax.Array = 1,
-    method: str = "central",
+    method: MethodKind = "central",
 ) -> jax.Array:
     """Compute the ∇F of input array where F is a scalar function of x and
     returns vectors of the same shape as x stacked along the first axis.
@@ -299,7 +303,7 @@ def gradient(
     Index notation : dF/dxi
 
     Example:
-        # ∇F of a 2D array
+        >>> # ∇F of a 2D array
         >>> x, y = [jnp.linspace(0, 1, 100)] * 2
         >>> dx, dy = x[1] - x[0], y[1] - y[0]
         >>> X, Y = jnp.meshgrid(x, y, indexing="ij")
@@ -334,7 +338,7 @@ def jacobian(
     *,
     accuracy: int | tuple[int, ...] = 1,
     step_size: float | tuple[float, ...] | jax.Array = 1,
-    method: str = "central",
+    method: MethodKind = "central",
 ) -> jax.Array:
     """Compute the ∂Fi/∂xj of input array where F is a vector function of x and
     returns vectors of the same shape as x stacked along the first axis.
@@ -348,9 +352,9 @@ def jacobian(
     Index notation: ∂Fi/∂xj
 
     Example:
-        # F: R^2 -> R^2
-        # F = [ x^2*y, 5x+siny ]
-        # JF = [ [2xy, x^2], [5, cos(y)] ]
+        >>> # F: R^2 -> R^2
+        >>> # F = [ x^2*y, 5x+siny ]
+        >>> # JF = [ [2xy, x^2], [5, cos(y)] ]
         >>> with jax.experimental.enable_x64():
         ...    x, y = [jnp.linspace(-1, 1, 100)] * 2
         ...    dx, dy = x[1] - x[0], y[1] - y[0]
@@ -381,7 +385,7 @@ def divergence(
     accuracy: int | tuple[int, ...] = 1,
     step_size: float | tuple[float, ...] = 1,
     keepdims: bool = True,
-    method: str = "central",
+    method: MethodKind = "central",
 ) -> jax.Array:
     """Compute the ∇.F of input array where F is a vector field whose components are the first axis of x
     and returns a scalar field
@@ -396,7 +400,7 @@ def divergence(
     Index notation: dFi/dxi
 
     Example:
-        # ∇.F of a 2D array
+        >>> # ∇.F of a 2D array
         >>> x, y = [jnp.linspace(0, 1, 100)] * 2
         >>> dx, dy = x[1] - x[0], y[1] - y[0]
         >>> X, Y = jnp.meshgrid(x, y, indexing="ij")
@@ -433,7 +437,7 @@ def hessian(
     *,
     accuracy: int | tuple[int, ...] = 2,
     step_size: float | tuple[float, ...] | jax.Array = 1,
-    method: str = "central",
+    method: MethodKind = "central",
 ) -> jax.Array:
     """Compute hessian of F: R^m -> R
 
@@ -501,7 +505,7 @@ def laplacian(
     *,
     accuracy: int | tuple[int, ...] = 1,
     step_size: float | tuple[float, ...] | jax.Array = 1,
-    method: str = "central",
+    method: MethodKind = "central",
 ) -> jax.Array:
     """Compute the ΔF of input array.
     Args:
@@ -512,7 +516,7 @@ def laplacian(
 
     Index notation: d2F/dxi2
     Example:
-        # ΔF array
+        >>> # ΔF array
         >>> x, y = [jnp.linspace(0, 1, 100)] * 2
         >>> dx, dy = x[1] - x[0], y[1] - y[0]
         >>> X, Y = jnp.meshgrid(x, y, indexing="ij")
@@ -537,7 +541,7 @@ def _curl_2d(
     *,
     accuracy: int | tuple[int, ...] = 1,
     step_size: float | tuple[float, ...] | jax.Array = 1,
-    method: str = "central",
+    method: MethodKind = "central",
     keepdims: bool = True,
 ) -> jax.Array:
     """Compute the ∇×F of input array where F is a vector field whose components are the first axis of x
@@ -620,7 +624,7 @@ def curl(
     *,
     accuracy: int | tuple[int, ...] = 1,
     step_size: float | tuple[float, ...] | jax.Array = 1,
-    method: str = "central",
+    method: MethodKind = "central",
     keepdims: bool = True,
 ) -> jax.Array:
     """Compute the ∇×F of input array where F is a vector field whose components are the first axis of x
@@ -636,9 +640,9 @@ def curl(
         keepdims: whether to keep the leading dimension of the vector field (only for 2D)
 
     Example:
-        Curl for a 3D vector field is defined as
-        F = (F1, F2, F3)
-        ∇×F = (dF3/dy - dF2/dz, dF1/dz - dF3/dx, dF2/dx - dF1/dy)
+        >>> # Curl for a 3D vector field is defined as
+        >>> # F = (F1, F2, F3)
+        >>> # ∇×F = (dF3/dy - dF2/dz, dF1/dz - dF3/dx, dF2/dx - dF1/dy)
         >>> jax.config.update("jax_enable_x64", True)
         >>> x,y,z = [jnp.linspace(0, 1, 100)] * 3
         >>> dx,dy,dz = x[1]-x[0], y[1]-y[0], z[1]-z[0]
@@ -651,7 +655,7 @@ def curl(
         >>> curlF_exact = jnp.stack([F1*0,F1*0, 4*X**3 - 3*Y**2], axis=0)
         >>> npt.assert_allclose(curlF, curlF_exact, atol=1e-7)
 
-        Curl of 2D vector field is defined as
+        >>> # Curl of 2D vector field is defined as
         >>> x,y = [jnp.linspace(-1,1,50)]*2
         >>> dx,dy = x[1]-x[0],y[1]-y[0]
         >>> X,Y = jnp.meshgrid(x,y, indexing="ij")

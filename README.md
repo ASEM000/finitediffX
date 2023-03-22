@@ -3,8 +3,8 @@
 
 <br>
 
-[**Installation**](#Installation)
-|[**Examples**](#Examples)
+[**Installation**](#installation)
+|[**Examples**](#examples)
 
 ![Tests](https://github.com/ASEM000/pytreeclass/actions/workflows/tests.yml/badge.svg)
 ![pyver](https://img.shields.io/badge/python-3.8%203.9%203.10%203.11_-red)
@@ -29,7 +29,7 @@ Implements :
 - `laplacian(array, accuracy, method, step_size)`
 - `curl(array, step_size, method, keep_dims)`
 
-## 🛠️ Installation<a id="Installation"></a>
+## 🛠️ Installation<a id="installation"></a>
 
 ```python
 pip install FiniteDiffX
@@ -41,7 +41,7 @@ pip install FiniteDiffX
 pip install git+https://github.com/ASEM000/FiniteDiffX
 ```
 
-## ⏩ Examples<a id="Examples"></a>
+## ⏩ Examples<a id="examples"></a>
 
 ```python
 

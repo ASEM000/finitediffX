@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import functools as ft
+from typing import Any
 
 import jax
 import jax.numpy as jnp
 
 
-def _check_and_return(value, ndim, name):
+def _check_and_return(value: Any, ndim: int, name: str):
     if isinstance(value, int):
         return (value,) * ndim
     elif isinstance(value, jax.Array):

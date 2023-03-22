@@ -25,7 +25,7 @@ def _evaluate_func_at_shifted_steps_along_argnum(
     argnum: int,
     step_size: float,
     derivative: int,
-):
+) -> Callable:
     if not isinstance(argnum, int) or argnum < 0:
         raise ValueError(f"argnum must be a non-negative integer, got {argnum}")
 
