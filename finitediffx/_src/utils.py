@@ -35,6 +35,7 @@ def _generate_forward_offsets(
         msg = f"accuracy must be >= 2 for forward offset generation, got {accuracy}"
         raise ValueError(msg)
 
+    # ref:https://en.wikipedia.org/wiki/Finite_difference_coefficient
     return tuple(range(0, (derivative + accuracy)))
 
 
@@ -56,9 +57,10 @@ def _generate_central_offsets(
         msg = f"accuracy must be >= 2 for central offset generation, got {accuracy}"
         raise ValueError(msg)
 
-    return tuple(
-        range(-((derivative + accuracy - 1) // 2), (derivative + accuracy - 1) // 2 + 1)
-    )
+    # ref:https://en.wikipedia.org/wiki/Finite_difference_coefficient
+    left = -((derivative + accuracy - 1) // 2)
+    right = (derivative + accuracy - 1) // 2 + 1
+    return tuple(range(left, right))
 
 
 def _generate_backward_offsets(
@@ -106,6 +108,7 @@ def generate_finitediff_coeffs(
     See:
         https://en.wikipedia.org/wiki/Finite_difference_coefficient
         https://web.media.mit.edu/~crtaylor/calculator.html
+
     """
 
     N = len(offsets)

@@ -74,15 +74,27 @@ def test_difference_forward():
         # left = (4-1), (6-4), (3-6), (2-3)-> forward difference
         # right = (2-3) = -1 -> backward difference
         npt.assert_allclose(
-            difference(jnp.array([1, 4, 6, 3, 2]), accuracy=1, axis=0, derivative=1, method="forward"),
-            jnp.array([3., 2., -3., -1., -1.]),
+            difference(
+                jnp.array([1, 4, 6, 3, 2]),
+                accuracy=1,
+                axis=0,
+                derivative=1,
+                method="forward",
+            ),
+            jnp.array([3.0, 2.0, -3.0, -1.0, -1.0]),
         )
 
         # 1 4 6 3 2 4
         # Forward Coeffs -> [-1.5  2.  -0.5] (0, 1, 2)
         # Backward Coeffs -> [ 0.5 -2.   1.5] (-2, -1, 0)
         npt.assert_allclose(
-            difference(jnp.array([1, 4, 6, 3, 2, 4]), accuracy=2, axis=0, derivative=1, method="forward"),
+            difference(
+                jnp.array([1, 4, 6, 3, 2, 4]),
+                accuracy=2,
+                axis=0,
+                derivative=1,
+                method="forward",
+            ),
             jnp.array([3.5, 4.5, -4.0, -2.5, 0.0, 3.5]),
         )
 
@@ -91,7 +103,8 @@ def test_difference_forward():
         # Forward Coeffs -> [-1 1] (0, 1)
         # Backward Coeffs -> [1 -1] (-1, 0)
         npt.assert_allclose(
-            difference(x, accuracy=1, axis=0, derivative=1, method="forward"), jnp.array([0.2, 0.2])
+            difference(x, accuracy=1, axis=0, derivative=1, method="forward"),
+            jnp.array([0.2, 0.2]),
         )
 
 
@@ -111,15 +124,27 @@ def test_difference_backward():
         # left = (4-1)-> forward difference
         # right = (4-1), (6-4), (3-6), (2-3) = -1 -> backward difference
         npt.assert_allclose(
-            difference(jnp.array([1, 4, 6, 3, 2]), accuracy=1, axis=0, derivative=1, method="backward"),
-            jnp.array([3., 3., 2., -3., -1.]),
+            difference(
+                jnp.array([1, 4, 6, 3, 2]),
+                accuracy=1,
+                axis=0,
+                derivative=1,
+                method="backward",
+            ),
+            jnp.array([3.0, 3.0, 2.0, -3.0, -1.0]),
         )
 
         # 1 4 6 3 2 4
         # Forward Coeffs -> [-1.5  2.  -0.5] (0, 1, 2)
         # Backward Coeffs -> [ 0.5 -2.   1.5] (-2, -1, 0)
         npt.assert_allclose(
-            difference(jnp.array([1, 4, 6, 3, 2, 4]), accuracy=2, axis=0, derivative=1, method="backward"),
+            difference(
+                jnp.array([1, 4, 6, 3, 2, 4]),
+                accuracy=2,
+                axis=0,
+                derivative=1,
+                method="backward",
+            ),
             jnp.array([3.5, 4.5, 1.5, -5.5, 0.0, 3.5]),
         )
 
@@ -128,13 +153,12 @@ def test_difference_backward():
         # Forward Coeffs -> [-1 1] (0, 1)
         # Backward Coeffs -> [1 -1] (-1, 0)
         npt.assert_allclose(
-            difference(x, accuracy=1, axis=0, derivative=1, method="backward"), jnp.array([0.2, 0.2])
+            difference(x, accuracy=1, axis=0, derivative=1, method="backward"),
+            jnp.array([0.2, 0.2]),
         )
 
 
-@pytest.mark.parametrize(
-        "method", ("central", "forward","backward")
-)
+@pytest.mark.parametrize("method", ("central", "forward", "backward"))
 def test_divergence(method):
     with enable_x64():
         x, y = [jnp.linspace(0, 1, 100)] * 2
@@ -143,18 +167,20 @@ def test_divergence(method):
         F1 = X**2 + Y**3
         F2 = X**4 + Y**3
         F = jnp.stack([F1, F2], axis=0)  # 2D vector field F = (F1, F2)
-        divZ = divergence(F, step_size=(dx, dy), accuracy=7, method=method, keepdims=False)
+        divZ = divergence(
+            F, step_size=(dx, dy), accuracy=7, method=method, keepdims=False
+        )
         divZ_true = 2 * X + 3 * Y**2  # (dF1/dx) + (dF2/dy)
         npt.assert_allclose(divZ, divZ_true, atol=5e-7)
 
-        divZ = divergence(F, step_size=(dx, dy), accuracy=7,  method=method, keepdims=True)
+        divZ = divergence(
+            F, step_size=(dx, dy), accuracy=7, method=method, keepdims=True
+        )
         divZ_true = 2 * X + 3 * Y**2  # (dF1/dx) + (dF2/dy)
         npt.assert_allclose(divZ, divZ_true[None], atol=5e-7)
 
 
-@pytest.mark.parametrize(
-        "method", ("central", "forward","backward")
-)
+@pytest.mark.parametrize("method", ("central", "forward", "backward"))
 def test_gradient(method):
     with enable_x64():
         x, y = [jnp.linspace(0, 1, 100)] * 2
@@ -167,11 +193,12 @@ def test_gradient(method):
 
 
 @pytest.mark.parametrize(
-        "method,atol", [
-            ("central", 1e-7),
-            ("forward", 1e-6),
-            ("backward",1e-7)
-        ]
+    "method,atol",
+    [
+        ("central", 1e-6),
+        ("forward", 1e-6),
+        ("backward", 1e-6),
+    ],
 )
 def test_laplacian(method, atol):
     with enable_x64():
@@ -185,9 +212,7 @@ def test_laplacian(method, atol):
         npt.assert_allclose(laplacianZ, laplacianZ_true, atol=atol)
 
 
-@pytest.mark.parametrize(
-        "method", ("central", "forward","backward")
-)
+@pytest.mark.parametrize("method", ("central", "forward", "backward"))
 def test_curl(method):
     with enable_x64():
         x, y, z = [jnp.linspace(0, 1, 100)] * 3
@@ -222,9 +247,7 @@ def test_curl(method):
         curl(F[None], accuracy=4, step_size=dx, method=method, keepdims=True)
 
 
-@pytest.mark.parametrize(
-        "method", ("central", "forward","backward")
-)
+@pytest.mark.parametrize("method", ("central", "forward", "backward"))
 def test_jacobian(method):
     with enable_x64():
         x, y = [jnp.linspace(-1, 1, 100)] * 2
@@ -259,9 +282,7 @@ def test_jacobian(method):
         npt.assert_allclose(JY, JY_true, rtol=1e-3, atol=1e-5)
 
 
-@pytest.mark.parametrize(
-        "method", ("central", "forward","backward")
-)
+@pytest.mark.parametrize("method", ("central", "forward", "backward"))
 def test_hessian(method):
     with enable_x64():
         x, y = [jnp.linspace(-1, 1, 100)] * 2

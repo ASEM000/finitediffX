@@ -41,23 +41,38 @@ def _central_difference(
     center_offsets,
     right_offsets,
 ):
+    # offset defines the position of the point to be used in the finite difference
+    # and coeff defines the coefficient to be used in the finite difference
+    # for example, if we have a 5 point stencil for first derivative, the
+    # offsets = (-2, -1, 0, 1, 2)
+    # coefficients = (1/12, -2/3, 0, 2/3, -1/12)
+    # this means that the finite difference is
+    # df/fx = 1/12 * f(x-2) - 2/3 * f(x-1) + 0 * f(x) + 2/3 * f(x+1) - 1/12 * f(x+2)
+
     size = x.shape[axis]
+
+    # axis defines the axis along which the finite difference is to be computed
+    # for example, if x is a 2D array, then axis = 0 means that the finite difference
+    # is to be computed along the first axis, i.e. df/dx
+    # axis = 1 means that the finite difference is to be computed along the second axis i.e. df/dy
     sliced = ft.partial(jax.lax.slice_in_dim, x, axis=axis)
 
-    # use central difference for interior points
+    # calculate the finite difference for the left side of the array
+    # i.e. coefficients * f(x-offset)
+
     left_x = sum(
         coeff * sliced(offset, offset - center_offsets[0])
         for offset, coeff in zip(left_offsets, left_coeffs)
     )
 
-    right_x = sum(
-        coeff * sliced(size + (offset - center_offsets[-1]), size + (offset))
-        for offset, coeff in zip(right_offsets, right_coeffs)
-    )
-
     center_x = sum(
         coeff * sliced(offset - center_offsets[0], size + (offset - center_offsets[-1]))
         for offset, coeff in zip(center_offsets, center_coeffs)
+    )
+
+    right_x = sum(
+        coeff * sliced(size + (offset - center_offsets[-1]), size + (offset))
+        for offset, coeff in zip(right_offsets, right_coeffs)
     )
 
     return jnp.concatenate([left_x, center_x, right_x], axis=axis)
@@ -164,7 +179,7 @@ def difference(
         Finite difference derivative along the given axis
 
     Example:
-        # dydx of a 2D array
+        >>> # dydx of a 2D array
         >>> x, y = [jnp.linspace(0, 1, 100)] * 2
         >>> dx, dy = x[1] - x[0], y[1] - y[0]
         >>> X, Y = jnp.meshgrid(x, y, indexing="ij")
@@ -172,16 +187,21 @@ def difference(
         >>> dFdX = difference(F, step_size=dx, axis=0, accuracy=3, method="central")
         >>> dFdXdY = difference(dFdX, step_size=dy, axis=1, accuracy=3, method="central")
 
-        # 1d finite difference derivative
+        >>> # 1d finite difference derivative
         >>> x = jnp.array([1.2, 1.3, 2.2, 3., 4.5, 5.5, 6., 7., 8., 20.])
         >>> difference(x, accuracy=1)
         [ 0.0999999  0.5        0.85       1.15       1.25       0.75 0.75       1.         6.5       12.       ]
 
 
-        # apply forward difference to the first element with accuracy 1
+    Note:
+        Handling of boundary points is done by applying forward/backward difference to the first/last element
+        and central difference to the interior elements.
+        For the previous example, the following steps are performed:
+
+        - apply forward difference to the first element with accuracy 1
         x_1 = 1.3-1.2 = 0.1
 
-        # apply central difference to interior elements with accuracy 2
+        - apply central difference to interior elements with accuracy 2
         x_2 = (2.2-1.2)/2 = 0.5
         x_3 = (3.-1.3)/2 = 0.85
         x_4 = (4.5-2.2)/2 = 1.15
@@ -191,7 +211,7 @@ def difference(
         x_8 = (8.-6.)/2 = 1.
         x_9 = (20.-7.)/2 = 6.5
 
-        # apply backward difference to the last element with accuracy 1
+        - apply backward difference to the last element with accuracy 1
         x_10 = 20.-8. = 12.
     """
     size = array.shape[axis]

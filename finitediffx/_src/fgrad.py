@@ -89,13 +89,16 @@ def fgrad(
         DeviceArray(4., dtype=float32)
     """
     if offsets is None:
+        # if offsets is not provided, generate them based on accuracy
+        # otherwise, use the provided offsets and discard accuracy
         if accuracy < 2:
             raise ValueError(f"accuracy must be >= 2, got {accuracy}")
         # generate central offsets based on accuracy
         offsets = _generate_central_offsets(derivative, accuracy=accuracy)
 
     if step_size is None:
-        # the best default step size for arbitrary derivative order and accuracy
+        # generate step size based on accuracy
+        # the best step size = 2**(-23 / (2 * derivative))
         step_size = (2) ** (-23 / (2 * derivative))
 
     # finite difference coefficients
@@ -104,6 +107,7 @@ def fgrad(
     # TODO: edit docstring of the differentiated function
 
     if isinstance(argnums, int):
+        # fgrad(func, argnums=0)
         dfunc = _evaluate_func_at_shifted_steps_along_argnum(
             func,
             coeffs=coeffs,
@@ -115,7 +119,9 @@ def fgrad(
         return ft.wraps(func)(lambda *a, **k: sum(dfunc(*a, **k)))
 
     if isinstance(argnums, tuple):
-        # return a tuple of derivatives if argnums is a tuple
+        # fgrad(func, argnums=(0,1))
+        # return a tuple of derivatives evaluated at each argnum
+        # this behavior is similar to jax.grad(func, argnums=(...))
         dfuncs = [
             _evaluate_func_at_shifted_steps_along_argnum(
                 func,

@@ -16,13 +16,8 @@ def test_generate_finitediff_coeffs():
         all_correct(DF((0, 1)), jnp.array([-1.0, 1.0]))
         all_correct(DF((0, 1, 2)), jnp.array([-3 / 2.0, 2.0, -1 / 2]))
         all_correct(DF((0, 1, 2, 3)), jnp.array([-11 / 6, 3.0, -3 / 2, 1 / 3]))
-        all_correct(
-            DF((0, 1, 2, 3, 4)), jnp.array([-25 / 12, 4.0, -3.0, 4 / 3, -1 / 4])
-        )
-        all_correct(
-            DF((0, 1, 2, 3, 4, 5)),
-            jnp.array([-137 / 60, 5.0, -5, 10 / 3, -5 / 4, 1 / 5]),
-        )
+        all_correct(DF((0, 1, 2, 3, 4)), jnp.array([-25 / 12, 4.0, -3.0, 4 / 3, -1 / 4]))  # fmt: skip
+        all_correct(DF((0, 1, 2, 3, 4, 5)), jnp.array([-137 / 60, 5.0, -5, 10 / 3, -5 / 4, 1 / 5]),)  # fmt: skip
         all_correct(
             DF((0, 1, 2, 3, 4, 5, 6)),
             jnp.array([-49 / 20, 6.0, -15 / 2, 20 / 3, -15 / 4, 6 / 5, -1 / 6]),
