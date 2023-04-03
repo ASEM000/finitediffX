@@ -530,7 +530,12 @@ def laplacian(
 
     return sum(
         difference(
-            array, accuracy=acc, step_size=step, derivative=2, method=method, axis=axis
+            array,
+            accuracy=acc,
+            step_size=step,
+            derivative=2,
+            method=method,
+            axis=axis,
         )
         for axis, (acc, step) in enumerate(zip(accuracy, step_size))
     )
@@ -566,10 +571,18 @@ def _curl_2d(
         >>> curl = curl_2d(F, accuracy=4, step_size=dx)
     """
     dF1dY = difference(
-        array[0], accuracy=accuracy[1], step_size=step_size[1], method=method, axis=1
+        array[0],
+        accuracy=accuracy[1],
+        step_size=step_size[1],
+        method=method,
+        axis=1,
     )
     dF2dX = difference(
-        array[1], accuracy=accuracy[0], step_size=step_size[0], method=method, axis=0
+        array[1],
+        accuracy=accuracy[0],
+        step_size=step_size[0],
+        method=method,
+        axis=0,
     )
 
     result = dF2dX - dF1dY
@@ -588,24 +601,48 @@ def _curl_3d(
     method: str = "central",
 ) -> jax.Array:
     dF1dY = difference(
-        array[0], accuracy=accuracy[1], step_size=step_size[1], method=method, axis=1
+        array[0],
+        accuracy=accuracy[1],
+        step_size=step_size[1],
+        method=method,
+        axis=1,
     )
     dF1dZ = difference(
-        array[0], accuracy=accuracy[2], step_size=step_size[2], method=method, axis=2
+        array[0],
+        accuracy=accuracy[2],
+        step_size=step_size[2],
+        method=method,
+        axis=2,
     )
 
     dF2dX = difference(
-        array[1], accuracy=accuracy[0], step_size=step_size[0], method=method, axis=0
+        array[1],
+        accuracy=accuracy[0],
+        step_size=step_size[0],
+        method=method,
+        axis=0,
     )
     dF2dZ = difference(
-        array[1], accuracy=accuracy[2], step_size=step_size[2], method=method, axis=2
+        array[1],
+        accuracy=accuracy[2],
+        step_size=step_size[2],
+        method=method,
+        axis=2,
     )
 
     dF3dX = difference(
-        array[2], accuracy=accuracy[0], step_size=step_size[0], method=method, axis=0
+        array[2],
+        accuracy=accuracy[0],
+        step_size=step_size[0],
+        method=method,
+        axis=0,
     )
     dF3dY = difference(
-        array[2], accuracy=accuracy[1], step_size=step_size[1], method=method, axis=1
+        array[2],
+        accuracy=accuracy[1],
+        step_size=step_size[1],
+        method=method,
+        axis=1,
     )
 
     return jnp.stack(
