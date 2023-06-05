@@ -48,9 +48,11 @@ pip install FiniteDiffX
 pip install git+https://github.com/ASEM000/FiniteDiffX
 ```
 
-## ⏩ Examples<a id="examples"></a>
+**If you find it useful to you, consider giving it a star! 🌟**
 
-<br><br>
+<br>
+
+## ⏩ Examples<a id="examples"></a>
 
 ### **`Array` accepting functions:**
 
@@ -214,8 +216,7 @@ npt.assert_allclose(JF, JF_exact, atol=1e-7)
 
 </details>
 
-<br>
-<br>
+<br><br>
 
 ### **Function transformation:**
 
@@ -263,7 +264,6 @@ with enable_x64():
 
 </details>
 
-<br>
 <br>
 
 **`define_fdjvp`**
