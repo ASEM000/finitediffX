@@ -120,6 +120,51 @@ def test_fgrad_second_derivative():
             all_correct(F1, F3)
 
 
+def test_fgrad_multiple_step_sizes():
+    with enable_x64():
+        # test multiple step sizes
+        func = lambda x, y: (x + y) ** 2
+        dfunc = fgrad(
+            func,
+            step_size=(None, 1e-3),
+            offsets=(jnp.array([-1, 1.0]), jnp.array([-2, 2.0])),
+            argnums=(0, 1),
+        )
+
+        dval = dfunc(1.0, 1.0)
+        assert dval[0] != dval[1]  # different step sizes
+        npt.assert_allclose(dval[0], 4.0, atol=1e-3)
+        npt.assert_allclose(dval[1], 4.0, atol=1e-3)
+
+    with pytest.raises(TypeError):
+        dfunc = fgrad(
+            func,
+            step_size=(None, 1e-3),
+            offsets=(jnp.array([-1, 1.0]), jnp.array([-2, 2.0])),
+            argnums=0,
+        )  # non-tuple argnums with tuple step_size
+
+    with pytest.raises(AssertionError):
+        # mismatched argnums length and step_size length
+        dfunc = fgrad(func, step_size=(None,), argnums=(0, 1))
+
+    with pytest.raises(AssertionError):
+        # mismatched argnums length and step_size length
+        dfunc = fgrad(func, offsets=(jnp.array([-1, 1.0]),), argnums=(0, 1))
+
+    with pytest.raises(ValueError):
+        # wrong accuracy
+        dfunc = fgrad(
+            func,
+            offsets=(Offset(accuracy=0), Offset(accuracy=1)),
+            argnums=(0, 1),
+        )
+
+    with pytest.raises(TypeError):
+        # wrong accuracy
+        dfunc = fgrad(func, offsets=(Offset(accuracy=2), ""), argnums=(0, 1))
+
+
 def test_fgrad_argnum():
     with enable_x64():
         all_correct = lambda lhs, rhs: np.testing.assert_allclose(lhs, rhs, atol=0.05)
