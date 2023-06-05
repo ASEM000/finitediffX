@@ -1,3 +1,17 @@
+# Copyright 2023 FiniteDiffX authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import annotations
 
 import functools as ft
@@ -19,7 +33,8 @@ def _check_and_return(value: Any, ndim: int, name: str):
 
 
 def _generate_forward_offsets(
-    derivative: int, accuracy: int = 2
+    derivative: int,
+    accuracy: int = 2,
 ) -> tuple[float | int, ...]:
     """Generate central difference offsets
 
@@ -41,7 +56,8 @@ def _generate_forward_offsets(
 
 
 def _generate_central_offsets(
-    derivative: int, accuracy: int = 2
+    derivative: int,
+    accuracy: int = 2,
 ) -> tuple[float | int, ...]:
     """Generate central difference offsets
 
@@ -65,7 +81,8 @@ def _generate_central_offsets(
 
 
 def _generate_backward_offsets(
-    derivative: int, accuracy: int = 2
+    derivative: int,
+    accuracy: int = 2,
 ) -> tuple[float | int, ...]:
     """Generate central difference offsets
 
@@ -87,8 +104,9 @@ def _generate_backward_offsets(
 
 @ft.partial(jax.jit, static_argnums=(1,))
 def generate_finitediff_coeffs(
-    offsets: tuple[float | int, ...], derivative: int
-) -> tuple[float]:
+    offsets: tuple[float | int, ...],
+    derivative: int,
+) -> jax.Array:
     """Generate FD coeffs
 
     Args:
@@ -100,29 +118,23 @@ def generate_finitediff_coeffs(
 
     Example:
         >>> generate_finitediff_coeffs(offsets=(-1, 0, 1), derivative=1)
-        (-0.5, 0.0, 0.5)
+        Array([-0.5,  0. ,  0.5], dtype=float32)
 
         >>> generate_finitediff_coeffs(offsets=(-1, 0, 1), derivative=2)
-        (1.0, -2.0, 1.0)
-        # translates to  1*f(x-1) - 2*f(x) + 1*f(x+1)
+        Array([ 1., -2.,  1.], dtype=float32)
+        >>> # translates to  1*f(x-1) - 2*f(x) + 1*f(x+1)
 
     See:
         https://en.wikipedia.org/wiki/Finite_difference_coefficient
         https://web.media.mit.edu/~crtaylor/calculator.html
-
     """
 
-    N = len(offsets)
-
-    if derivative >= N:
-        msg = "Sampling points must be larger than derivative order."
-        msg += f" len(offsets)={len(offsets)} must be less than {derivative}"
-        raise ValueError(msg)
+    if derivative >= (N := len(offsets)):
+        raise ValueError(f"{len(offsets)=} must be larger than {derivative=}.")
 
     A = jnp.repeat(jnp.array(offsets)[None, :], repeats=N, axis=0)
     A **= jnp.arange(0, N).reshape(-1, 1)
     index = jnp.arange(N)
     factorial = jnp.prod(jnp.arange(1, derivative + 1))
     B = jnp.where(index == derivative, factorial, 0)[:, None]
-    C = jnp.linalg.inv(A) @ B  # solve Ax = B
-    return C.flatten()
+    return (jnp.linalg.inv(A) @ B).flatten()
