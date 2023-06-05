@@ -1,10 +1,14 @@
+import functools as ft
+
 import jax
 import jax.numpy as jnp
 import numpy as np
+import numpy as onp
+import numpy.testing as npt
 import pytest
 from jax.experimental import enable_x64
 
-from finitediffx import fgrad, generate_finitediff_coeffs
+from finitediffx import Offset, define_fdjvp, fgrad, generate_finitediff_coeffs
 
 
 def test_generate_finitediff_coeffs():
@@ -149,7 +153,40 @@ def test_fgrad_error():
         fgrad(lambda x: x, argnums=1.0)
 
     with pytest.raises(ValueError):
-        fgrad(lambda x: x, accuracy=1)
+        fgrad(lambda x: x, offsets=Offset(accuracy=1))
 
     with pytest.raises(ValueError):
         fgrad(lambda x: x, argnums=[1, 2])
+
+
+def test_fdjvp():
+    def wrap_pure_callback(func):
+        @ft.wraps(func)
+        def wrapper(*args, **kwargs):
+            args = [jnp.asarray(arg) for arg in args]
+            func_ = lambda *a, **k: func(*a, **k).astype(a[0].dtype)
+            dtype_ = jax.ShapeDtypeStruct(
+                jnp.broadcast_shapes(*[ai.shape for ai in args]),
+                args[0].dtype,
+            )
+            return jax.pure_callback(func_, dtype_, *args, **kwargs, vectorized=True)
+
+        return wrapper
+
+    @jax.jit
+    @define_fdjvp
+    @wrap_pure_callback
+    def numpy_func(x, y):
+        return onp.power(x, 2) + onp.power(y, 2)
+
+    npt.assert_allclose(
+        jax.grad(numpy_func, argnums=0)(1.0, 2.0),
+        jnp.array(2.0),
+        atol=1e-3,
+    )
+
+    npt.assert_allclose(
+        jax.grad(numpy_func, argnums=1)(1.0, 2.0),
+        jnp.array(4.0),
+        atol=1e-3,
+    )

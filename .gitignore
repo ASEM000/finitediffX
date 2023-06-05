@@ -11,3 +11,4 @@ experimental
 *.vscode/
 notes
 build
+playground.ipynb
