@@ -27,6 +27,9 @@ P = ParamSpec("P")
 T = TypeVar("T")
 
 
+__all__ = ("fgrad", "Offset", "define_fdjvp")
+
+
 class Offset(NamedTuple):
     """Convinience class for finite difference offsets used inside `fgrad`"""
 
@@ -174,8 +177,8 @@ def fgrad(
 
     """
     func.__doc__ = (
-        f"Finite difference derivative of {func.__name__} w.r.t {argnums=}"
-        f"\n\n{func.__doc__}"
+        f"Finite difference derivative of {getattr(func,'__name__', func)}"
+        f" w.r.t {argnums=}\n\n{func.__doc__}"
     )
 
     if isinstance(argnums, int):

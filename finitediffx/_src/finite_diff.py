@@ -408,8 +408,8 @@ def divergence(
     keepdims: bool = True,
     method: MethodKind = "central",
 ) -> jax.Array:
-    """Compute the ∇.F of input array where F is a vector field whose components are the first axis of x
-    and returns a scalar field
+    """Compute the ∇.F of input array where F is a vector field whose components
+    are the first axis of x and returns a scalar field
 
     Args:
         x: input array where the leading axis is the dimension of the vector field
@@ -675,8 +675,8 @@ def curl(
     method: MethodKind = "central",
     keepdims: bool = True,
 ) -> jax.Array:
-    """Compute the ∇×F of input array where F is a vector field whose components are the first axis of x
-    and returns a vector field
+    """Compute the ∇×F of input array where F is a vector field whose components
+    are the first axis of x and returns a vector field
 
     Index notation: εijk dFk/dxj
 

@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import functools as ft
+import math
 from typing import Any
 
 import jax
@@ -45,11 +46,9 @@ def _generate_forward_offsets(
         tuple[float | int, ...]: central difference offsets
     """
     if derivative < 1:
-        msg = f"derivative must be >= 1 for forward offset generation, got {derivative}"
-        raise ValueError(msg)
+        raise ValueError(f"{derivative=} <1 for forward offset generation")
     if accuracy < 1:
-        msg = f"accuracy must be >= 2 for forward offset generation, got {accuracy}"
-        raise ValueError(msg)
+        raise ValueError(f"{accuracy=} <1 for forward offset generation")
 
     # ref:https://en.wikipedia.org/wiki/Finite_difference_coefficient
     return tuple(range(0, (derivative + accuracy)))
@@ -68,11 +67,9 @@ def _generate_central_offsets(
         tuple[float | int, ...]: central difference offsets
     """
     if derivative < 1:
-        msg = f"derivative must be >= 1 for central offset generation, got {derivative}"
-        raise ValueError(msg)
+        raise ValueError(f"{derivative=} <1 for central offset generation")
     if accuracy < 2:
-        msg = f"accuracy must be >= 2 for central offset generation, got {accuracy}"
-        raise ValueError(msg)
+        raise ValueError(f"{accuracy=} <2 for central offset generation")
 
     # ref:https://en.wikipedia.org/wiki/Finite_difference_coefficient
     left = -((derivative + accuracy - 1) // 2)
@@ -93,16 +90,27 @@ def _generate_backward_offsets(
         tuple[float | int, ...]: central difference offsets
     """
     if derivative < 1:
-        msg = f"derivative must be >= 1 for back offset generation, got {derivative}"
-        raise ValueError(msg)
+        raise ValueError(f"{derivative=} <1 for back offset generation")
     if accuracy < 1:
-        msg = f"accuracy must be >= 2 for back offset generation, got {accuracy}"
-        raise ValueError(msg)
+        raise ValueError(f"{accuracy=} <1 for back offset generation")
 
     return tuple(range(-(derivative + accuracy - 1), 1))
 
 
 @ft.partial(jax.jit, static_argnums=(1,))
+def _generate_finitediff_coeffs(
+    offsets: tuple[float | int, ...],
+    derivative: int,
+) -> jax.Array:
+    N = len(offsets)
+    A = jnp.repeat(jnp.array(offsets)[None, :], repeats=N, axis=0)
+    A **= jnp.arange(0, N).reshape(-1, 1)
+    index = jnp.arange(N)
+    B = jnp.where(index == derivative, math.factorial(derivative), 0)[:, None]
+
+    return (jnp.linalg.inv(A) @ B).flatten()
+
+
 def generate_finitediff_coeffs(
     offsets: tuple[float | int, ...],
     derivative: int,
@@ -129,12 +137,7 @@ def generate_finitediff_coeffs(
         https://web.media.mit.edu/~crtaylor/calculator.html
     """
 
-    if derivative >= (N := len(offsets)):
+    if derivative >= len(offsets):
         raise ValueError(f"{len(offsets)=} must be larger than {derivative=}.")
 
-    A = jnp.repeat(jnp.array(offsets)[None, :], repeats=N, axis=0)
-    A **= jnp.arange(0, N).reshape(-1, 1)
-    index = jnp.arange(N)
-    factorial = jnp.prod(jnp.arange(1, derivative + 1))
-    B = jnp.where(index == derivative, factorial, 0)[:, None]
-    return (jnp.linalg.inv(A) @ B).flatten()
+    return _generate_finitediff_coeffs(offsets, derivative)
