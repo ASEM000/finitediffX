@@ -1,7 +1,16 @@
-# credits to Mahmoud Asem 2022 @KAIST
-# functions that operate on arrays
-# higher accuracy finite difference gradient might require
-# setting jax.config.update("jax_enable_x64", True)
+# Copyright 2023 FiniteDiffX authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from __future__ import annotations
 
@@ -184,22 +193,24 @@ def difference(
     Example:
         >>> # dydx of a 2D array
         >>> import finitediffx as fdx
-        >>> x, y = [jnp.linspace(0, 1, 100)] * 2
-        >>> dx, dy = x[1] - x[0], y[1] - y[0]
-        >>> X, Y = jnp.meshgrid(x, y, indexing="ij")
-        >>> F =  jnp.sin(X) * jnp.cos(Y)
-        >>> dFdX = fdx.difference(F, step_size=dx, axis=0, accuracy=3, method="central")
-        >>> dFdXdY = fdx.difference(dFdX, step_size=dy, axis=1, accuracy=3, method="central")
-
-        >>> # 1d finite difference derivative
-        >>> x = jnp.array([1.2, 1.3, 2.2, 3., 4.5, 5.5, 6., 7., 8., 20.])
-        >>> difference(x, accuracy=1)
-        [ 0.0999999  0.5        0.85       1.15       1.25       0.75 0.75       1.         6.5       12.       ]
+        >>> import jax.numpy as jnp
+        >>> import jax
+        >>> with jax.experimental.enable_x64():
+        ...     x, y = [jnp.linspace(0, 1, 100)] * 2
+        ...     dx, dy = x[1] - x[0], y[1] - y[0]
+        ...     X, Y = jnp.meshgrid(x, y, indexing="ij")
+        ...     F =  jnp.sin(X) * jnp.cos(Y)
+        ...     dFdX = fdx.difference(F, step_size=dx, axis=0, accuracy=3, method="central")
+        ...     dFdXdY = fdx.difference(dFdX, step_size=dy, axis=1, accuracy=3, method="central")
+        ...     # 1d finite difference derivative
+        ...     x = jnp.array([1.2, 1.3, 2.2, 3., 4.5, 5.5, 6., 7., 8., 20.])
+        ...     print(fdx.difference(x, accuracy=1))
+        [ 0.1   0.5   0.85  1.15  1.25  0.75  0.75  1.    6.5  12.  ]
 
 
     Note:
-        Handling of boundary points is done by applying forward/backward difference to the first/last element
-        and central difference to the interior elements.
+        Handling of boundary points is done by applying forward/backward difference
+        to the first/last element and central difference to the interior elements.
         For the previous example, the following steps are performed:
 
         - apply forward difference to the first element with accuracy 1
@@ -276,11 +287,12 @@ def difference(
             right_offsets=right_offsets,
         ) / (step_size**derivative)
 
-    msg = f"Size of the array along axis {axis} is smaller than the number of points required"
-    msg += f" for the accuracy {accuracy} and derivative {derivative} requested"
-    msg += f".\nSize must be larger than {len(left_offsets)}, but got {size}"
-    msg += f".\nMethod should be 'central', 'forward', 'backward', but got {method}"
-    raise ValueError(msg)
+    raise ValueError(
+        f"Size of the array along axis {axis} is smaller than the number of points required"
+        f" for the accuracy {accuracy} and derivative {derivative} requested"
+        f".\nSize must be larger than {len(left_offsets)}, but got {size}"
+        f".\nMethod should be 'central', 'forward', 'backward', but got {method}"
+    )
 
 
 @ft.partial(jax.jit, static_argnames=("accuracy", "method"))
@@ -304,14 +316,19 @@ def gradient(
 
     Example:
         >>> # ∇F of a 2D array
-        >>> x, y = [jnp.linspace(0, 1, 100)] * 2
-        >>> dx, dy = x[1] - x[0], y[1] - y[0]
-        >>> X, Y = jnp.meshgrid(x, y, indexing="ij")
-        >>> Z = X**2 + Y**3
-        >>> dZdX , dZdY = gradient(Z, step_size=(dx,dy))
-        >>> dZdx_true, dZdy_true= 2*X , 3*Y**2
-        >>> numpy.testing.assert_allclose(dZdx, dZdx_true, atol=1e-4)
-        >>> numpy.testing.assert_allclose(dZdy, dZdy_true, atol=1e-4)
+        >>> import finitediffx as fdx
+        >>> import jax.numpy as jnp
+        >>> import numpy.testing as npt
+        >>> import jax
+        >>> with jax.experimental.enable_x64():
+        ...     x, y = [jnp.linspace(0, 1, 100)] * 2
+        ...     dx, dy = x[1] - x[0], y[1] - y[0]
+        ...     X, Y = jnp.meshgrid(x, y, indexing="ij")
+        ...     Z = X**2 + Y**3
+        ...     dZdX , dZdY = fdx.gradient(Z, step_size=(dx,dy), accuracy=5)
+        ...     dZdX_true, dZdY_true= 2*X , 3*Y**2
+        ...     npt.assert_allclose(dZdX, dZdX_true, atol=1e-4)
+        ...     npt.assert_allclose(dZdY, dZdY_true, atol=1e-4)
     """
     accuracy = _check_and_return(accuracy, array.ndim, "accuracy")
     step_size = _check_and_return(step_size, array.ndim, "step_size")
@@ -355,6 +372,10 @@ def jacobian(
         >>> # F: R^2 -> R^2
         >>> # F = [ x^2*y, 5x+siny ]
         >>> # JF = [ [2xy, x^2], [5, cos(y)] ]
+        >>> import finitediffx as fdx
+        >>> import jax.numpy as jnp
+        >>> import numpy.testing as npt
+        >>> import jax
         >>> with jax.experimental.enable_x64():
         ...    x, y = [jnp.linspace(-1, 1, 100)] * 2
         ...    dx, dy = x[1] - x[0], y[1] - y[0]
@@ -401,6 +422,9 @@ def divergence(
 
     Example:
         >>> # ∇.F of a 2D array
+        >>> import finitediffx as fdx
+        >>> import jax.numpy as jnp
+        >>> import numpy.testing as npt
         >>> x, y = [jnp.linspace(0, 1, 100)] * 2
         >>> dx, dy = x[1] - x[0], y[1] - y[0]
         >>> X, Y = jnp.meshgrid(x, y, indexing="ij")
@@ -409,7 +433,7 @@ def divergence(
         >>> F = jnp.stack([F1, F2], axis=0) # 2D vector field F = (F1, F2)
         >>> divZ = divergence(F,step_size=(dx,dy), accuracy=7, keepdims=False)
         >>> divZ_true = 2*X + 3*Y**2  # (dF1/dx) + (dF2/dy)
-        >>> numpy.testing.assert_allclose(divZ, divZ_true, atol=5e-4)
+        >>> npt.assert_allclose(divZ, divZ_true, atol=5e-4)
     """
     accuracy = _check_and_return(accuracy, array.ndim - 1, "accuracy")
     step_size = _check_and_return(step_size, array.ndim - 1, "step_size")
@@ -450,14 +474,18 @@ def hessian(
     Index notation: d2F/dxij
 
     Example:
-        >>> x, y = [jnp.linspace(-1, 1, 100)] * 2
-        >>> dx, dy = x[1] - x[0], y[1] - y[0]
-        >>> X, Y = jnp.meshgrid(x, y, indexing="ij")
-
-        >>> F = X**2 * Y
-        >>> H = hessian(F, accuracy=4, step_size=(dx, dy))
-        >>> H_true = jnp.array([[2 * Y, 2 * X], [2 * X, jnp.zeros_like(X)]])
-        >>> npt.assert_allclose(H, H_true, atol=1e-7)
+        >>> import finitediffx as fdx
+        >>> import jax.numpy as jnp
+        >>> import numpy.testing as npt
+        >>> import jax
+        >>> with jax.experimental.enable_x64():
+        ...     x, y = [jnp.linspace(-1, 1, 100)] * 2
+        ...     dx, dy = x[1] - x[0], y[1] - y[0]
+        ...     X, Y = jnp.meshgrid(x, y, indexing="ij")
+        ...     F = X**2 * Y
+        ...     H = fdx.hessian(F, accuracy=4, step_size=(dx, dy))
+        ...     H_true = jnp.array([[2 * Y, 2 * X], [2 * X, jnp.zeros_like(X)]])
+        ...     npt.assert_allclose(H, H_true, atol=1e-7)
     """
     accuracy = _check_and_return(accuracy, array.ndim, "accuracy")
     step_size = _check_and_return(step_size, array.ndim, "step_size")
@@ -516,21 +544,30 @@ def laplacian(
 
     Index notation: d2F/dxi2
     Example:
-        >>> # ΔF array
-        >>> x, y = [jnp.linspace(0, 1, 100)] * 2
-        >>> dx, dy = x[1] - x[0], y[1] - y[0]
-        >>> X, Y = jnp.meshgrid(x, y, indexing="ij")
-        >>> Z = X**4 + Y**3
-        >>> laplacianZ = laplacian(Z, step_size=(dx,dy))
-        >>> laplacianZ_true = 12*X**2 + 6*Y
-        >>> numpy.testing.assert_allclose(laplacianZ, laplacianZ_true, atol=1e-4)
+        >>> import finitediffx as fdx
+        >>> import jax.numpy as jnp
+        >>> import numpy.testing as npt
+        >>> import jax
+        >>> with jax.experimental.enable_x64():
+        ...    x, y = [jnp.linspace(0, 1, 100)] * 2
+        ...    dx, dy = x[1] - x[0], y[1] - y[0]
+        ...    X, Y = jnp.meshgrid(x, y, indexing="ij")
+        ...    Z = X**4 + Y**3
+        ...    laplacianZ = fdx.laplacian(Z, step_size=(dx,dy), accuracy=10)
+        ...    laplacianZ_true = 12*X**2 + 6*Y
+        ...    npt.assert_allclose(laplacianZ, laplacianZ_true, atol=1e-4)
     """
     accuracy = _check_and_return(accuracy, array.ndim, "accuracy")
     step_size = _check_and_return(step_size, array.ndim, "step_size")
 
     return sum(
         difference(
-            array, accuracy=acc, step_size=step, derivative=2, method=method, axis=axis
+            array,
+            accuracy=acc,
+            step_size=step,
+            derivative=2,
+            method=method,
+            axis=axis,
         )
         for axis, (acc, step) in enumerate(zip(accuracy, step_size))
     )
@@ -544,32 +581,19 @@ def _curl_2d(
     method: MethodKind = "central",
     keepdims: bool = True,
 ) -> jax.Array:
-    """Compute the ∇×F of input array where F is a vector field whose components are the first axis of x
-    and returns a vector field
-
-    Index notation: εijk dFk/dxj
-
-    Args:
-        x: input array where the leading axis is the dimension of the vector field
-        accuracy: accuracy order of the gradient. Default is 1, can be a tuple for each axis
-        step_size: step size. Default is 1, can be a tuple for each axis
-        method: the method to use (forward, central, backward). Default is central
-        keepdims: whether to keep the leading dimension of the vector field
-
-    Example:
-        >>> x,y = [jnp.linspace(-1,1,50)]*2
-        >>> dx,dy = x[1]-x[0],y[1]-y[0]
-        >>> X,Y = jnp.meshgrid(x,y, indexing="ij")
-        >>> F1 = jnp.sin(Y)
-        >>> F2 = jnp.cos(X)
-        >>> F = jnp.stack([F1,F2], axis=0)
-        >>> curl = curl_2d(F, accuracy=4, step_size=dx)
-    """
     dF1dY = difference(
-        array[0], accuracy=accuracy[1], step_size=step_size[1], method=method, axis=1
+        array[0],
+        accuracy=accuracy[1],
+        step_size=step_size[1],
+        method=method,
+        axis=1,
     )
     dF2dX = difference(
-        array[1], accuracy=accuracy[0], step_size=step_size[0], method=method, axis=0
+        array[1],
+        accuracy=accuracy[0],
+        step_size=step_size[0],
+        method=method,
+        axis=0,
     )
 
     result = dF2dX - dF1dY
@@ -588,24 +612,48 @@ def _curl_3d(
     method: str = "central",
 ) -> jax.Array:
     dF1dY = difference(
-        array[0], accuracy=accuracy[1], step_size=step_size[1], method=method, axis=1
+        array[0],
+        accuracy=accuracy[1],
+        step_size=step_size[1],
+        method=method,
+        axis=1,
     )
     dF1dZ = difference(
-        array[0], accuracy=accuracy[2], step_size=step_size[2], method=method, axis=2
+        array[0],
+        accuracy=accuracy[2],
+        step_size=step_size[2],
+        method=method,
+        axis=2,
     )
 
     dF2dX = difference(
-        array[1], accuracy=accuracy[0], step_size=step_size[0], method=method, axis=0
+        array[1],
+        accuracy=accuracy[0],
+        step_size=step_size[0],
+        method=method,
+        axis=0,
     )
     dF2dZ = difference(
-        array[1], accuracy=accuracy[2], step_size=step_size[2], method=method, axis=2
+        array[1],
+        accuracy=accuracy[2],
+        step_size=step_size[2],
+        method=method,
+        axis=2,
     )
 
     dF3dX = difference(
-        array[2], accuracy=accuracy[0], step_size=step_size[0], method=method, axis=0
+        array[2],
+        accuracy=accuracy[0],
+        step_size=step_size[0],
+        method=method,
+        axis=0,
     )
     dF3dY = difference(
-        array[2], accuracy=accuracy[1], step_size=step_size[1], method=method, axis=1
+        array[2],
+        accuracy=accuracy[1],
+        step_size=step_size[1],
+        method=method,
+        axis=1,
     )
 
     return jnp.stack(
@@ -643,17 +691,21 @@ def curl(
         >>> # Curl for a 3D vector field is defined as
         >>> # F = (F1, F2, F3)
         >>> # ∇×F = (dF3/dy - dF2/dz, dF1/dz - dF3/dx, dF2/dx - dF1/dy)
-        >>> jax.config.update("jax_enable_x64", True)
-        >>> x,y,z = [jnp.linspace(0, 1, 100)] * 3
-        >>> dx,dy,dz = x[1]-x[0], y[1]-y[0], z[1]-z[0]
-        >>> X,Y,Z = jnp.meshgrid(x,y,z, indexing="ij")
-        >>> F1 = X**2 + Y**3
-        >>> F2 = X**4 + Y**3
-        >>> F3 = jnp.zeros_like(F1)
-        >>> F = jnp.stack([F1,F2,F3], axis=0)
-        >>> curlF = finitediffx.curl(F, step_size=(dx,dy,dz),  accuracy=6)
-        >>> curlF_exact = jnp.stack([F1*0,F1*0, 4*X**3 - 3*Y**2], axis=0)
-        >>> npt.assert_allclose(curlF, curlF_exact, atol=1e-7)
+        >>> import finitediffx as fdx
+        >>> import jax.numpy as jnp
+        >>> import numpy.testing as npt
+        >>> import jax
+        >>> with jax.experimental.enable_x64():
+        ...     x,y,z = [jnp.linspace(0, 1, 100)] * 3
+        ...     dx,dy,dz = x[1]-x[0], y[1]-y[0], z[1]-z[0]
+        ...     X,Y,Z = jnp.meshgrid(x,y,z, indexing="ij")
+        ...     F1 = X**2 + Y**3
+        ...     F2 = X**4 + Y**3
+        ...     F3 = jnp.zeros_like(F1)
+        ...     F = jnp.stack([F1,F2,F3], axis=0)
+        ...     curlF = fdx.curl(F, step_size=(dx,dy,dz),  accuracy=6)
+        ...     curlF_exact = jnp.stack([F1*0,F1*0, 4*X**3 - 3*Y**2], axis=0)
+        ...     npt.assert_allclose(curlF, curlF_exact, atol=1e-7)
 
         >>> # Curl of 2D vector field is defined as
         >>> x,y = [jnp.linspace(-1,1,50)]*2
@@ -662,7 +714,7 @@ def curl(
         >>> F1 = jnp.sin(Y)
         >>> F2 = jnp.cos(X)
         >>> F = jnp.stack([F1,F2], axis=0)
-        >>> curl = curl_2d(F, accuracy=4, step_size=dx)
+        >>> curl = fdx.curl(F, accuracy=4, step_size=dx)
     """
 
     accuracy = _check_and_return(accuracy, array.ndim - 1, "accuracy")
@@ -680,7 +732,8 @@ def curl(
             keepdims=keepdims,
         )
 
-    msg = f"`curl` is only implemented for 2D and 3D vector fields, got {array.ndim}D"
-    msg += "for 2D vector fields, the leading axis must have a shape=2, "
-    msg += "for 3D vector fields, the leading axis must have a shape=3"
-    raise ValueError(msg)
+    raise ValueError(
+        f"`curl` is only implemented for 2D and 3D vector fields, got {array.ndim}D"
+        "for 2D vector fields, the leading axis must have a shape=2, "
+        "for 3D vector fields, the leading axis must have a shape=3"
+    )

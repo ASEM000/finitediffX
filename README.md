@@ -9,7 +9,7 @@
 ![Tests](https://github.com/ASEM000/pytreeclass/actions/workflows/tests.yml/badge.svg)
 ![pyver](https://img.shields.io/badge/python-3.8%203.9%203.10%203.11_-red)
 ![pyver](https://img.shields.io/badge/jax-0.4+-red)
-![codestyle](https://img.shields.io/badge/codestyle-black-lightgrey)
+![codestyle](https://img.shields.io/badge/codestyle-black-black)
 [![Downloads](https://pepy.tech/badge/FiniteDiffX)](https://pepy.tech/project/FiniteDiffX)
 [![codecov](https://codecov.io/github/ASEM000/FiniteDiffX/branch/main/graph/badge.svg?token=VD45Y4HLWV)](https://codecov.io/github/ASEM000/FiniteDiffX)  
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ASEM000/FiniteDiffX/blob/main/FiniteDiffX%20Examples.ipynb)
@@ -21,6 +21,8 @@
 Differentiable finite difference tools in `jax`
 Implements :
 
+**`Array` accepting functions:**
+
 - `difference(array, axis, accuracy, step_size, method, derivative)`
 - `gradient(array, accuracy, method, step_size)`
 - `jacobian(array, accuracy, method, step_size)`
@@ -28,6 +30,11 @@ Implements :
 - `hessian(array, accuracy, method, step_size)`
 - `laplacian(array, accuracy, method, step_size)`
 - `curl(array, step_size, method, keep_dims)`
+
+**Function transformation:**
+
+- `fgrad`: similar to `jax.grad` but with finite difference approximation.
+- `define_fdjvp`: define `custom_jvp` rules using finite difference approximation (see example below).
 
 ## 🛠️ Installation<a id="installation"></a>
 
@@ -42,6 +49,145 @@ pip install git+https://github.com/ASEM000/FiniteDiffX
 ```
 
 ## ⏩ Examples<a id="examples"></a>
+
+### **Function transformation:**
+
+**`fgrad`**:
+
+`fgrad` can be used in a similar way to `jax.grad`, however the `fgrad` differentiates a function based on the finite difference rules.
+
+```python
+
+import jax
+from jax import numpy as jnp
+import numpy as onp  # Not jax-traceable
+import finitediffx as fdx
+import functools as ft
+from jax.experimental import enable_x64
+
+with enable_x64():
+
+    @fdx.fgrad
+    @fdx.fgrad
+    def np_rosenbach2_fdx_style_1(x, y):
+        """Compute the Rosenbach function for two variables in numpy."""
+        return onp.power(1-x, 2) + 100*onp.power(y-onp.power(x, 2), 2)
+
+    @ft.partial(fdx.fgrad, derivative=2)
+    def np2_rosenbach2_fdx_style2(x, y):
+        """Compute the Rosenbach function for two variables."""
+        return onp.power(1-x, 2) + 100*onp.power(y-onp.power(x, 2), 2)
+
+    @jax.grad
+    @jax.grad
+    def jnp_rosenbach2(x, y):
+        """Compute the Rosenbach function for two variables."""
+        return jnp.power(1-x, 2) + 100*jnp.power(y-jnp.power(x, 2), 2)
+
+    print(np_rosenbach2_fdx_style_1(1.,2.))
+    print(np2_rosenbach2_fdx_style2(1.,2.))
+    print(jnp_rosenbach2(1., 2.))
+# 402.0000951997936
+# 402.0000000002219
+# 402.0
+```
+
+**`define_fdjvp`**
+
+`define_fdjvp` combines `custom_jvp` and `fgrad` to define custom finite difference rules,when used with `pure_callback` it can to make non-tracable code works within `jax` machinary.
+
+_This example is based on the comment from `jax` proposed [`JEP`](https://github.com/google/jax/issues/15425)_
+
+For example this code will fail to work with `jax` transformations, becasue it uses `numpy` functions.
+
+```python
+import numpy as onp
+import jax
+
+
+def numpy_func(x: onp.ndarray) -> onp.ndarray:
+    return onp.power(x, 2)
+
+
+try:
+    jax.grad(numpy_func)(2.0)
+except jax.errors.TracerArrayConversionError as e:
+    print(e)
+
+# The numpy.ndarray conversion method __array__() was called on the JAX Tracer object Traced<ConcreteArray(2.0, dtype=float32, weak_type=True)>with<JVPTrace(level=2/0)> with
+#   primal = 2.0
+#   tangent = Traced<ShapedArray(float32[], weak_type=True)>with<JaxprTrace(level=1/0)> with
+#     pval = (ShapedArray(float32[], weak_type=True), None)
+#     recipe = LambdaBinding()
+# See https://jax.readthedocs.io/en/latest/errors.html#jax.errors.TracerArrayConversionError
+```
+
+We can use `define_fdjvp` to make this work with non-`jax` code
+
+```python
+
+import functools as ft
+
+import jax
+from typing import Callable, Any, Union
+import jax.numpy as jnp
+import numpy as onp
+import finitediffx as fdx
+import functools as ft
+
+
+def wrap_pure_callback(func):
+    @ft.wraps(func)
+    def wrapper(*args, **kwargs):
+        args = [jnp.asarray(arg) for arg in args]
+        func_ = lambda *a, **k: func(*a, **k).astype(a[0].dtype)
+        dtype_ = jax.ShapeDtypeStruct(
+            jnp.broadcast_shapes(*[ai.shape for ai in args]),
+            args[0].dtype,
+        )
+        return jax.pure_callback(func_, dtype_, *args, **kwargs, vectorized=True)
+
+    return wrapper
+
+
+@jax.jit  # -> can compile
+@jax.grad  # -> can take gradient
+@ft.partial(
+    fdx.define_fdjvp,
+    # automatically generate offsets
+    offsets=fdx.Offset(accuracy=4),
+    # manually set step size
+    step_size=1e-3,
+)
+@wrap_pure_callback
+def numpy_func(x: onp.ndarray) -> onp.ndarray:
+    return onp.power(x, 2)
+
+
+print(numpy_func(1.0))
+# 1.9999794
+
+@jax.jit  # -> can compile
+@jax.grad  # -> can take gradient
+@ft.partial(
+    fdx.define_fdjvp,
+    # provide the desired evaluation points for the finite difference stencil
+    # in this case its centered finite difference (f(x-1) - f(x+1))/(2*step_size)
+    offsets=jnp.array([1, -1]),
+    # manually set step size
+    step_size=1e-3,
+)
+@wrap_pure_callback
+def numpy_func(x: onp.ndarray) -> onp.ndarray:
+    return onp.power(x, 2)
+
+
+print(numpy_func(1.0))
+# 2.0000048
+
+```
+
+### **`Array` accepting functions:**
 
 ```python
 
