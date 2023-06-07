@@ -33,7 +33,7 @@ Implements :
 
 **Function transformation:**
 
-- `fgrad`: similar to `jax.grad` but with finite difference approximation.
+- `fgrad`, and `value_and_fgrad` : similar to `jax.grad` and `jax.value_and_grad` but with finite difference approximation.
 - `define_fdjvp`: define `custom_jvp` rules using finite difference approximation (see example below).
 
 ## 🛠️ Installation<a id="installation"></a>
@@ -260,6 +260,25 @@ with enable_x64():
 # 402.0000951997936
 # 402.0000000002219
 # 402.0
+```
+
+Also works on pytrees
+
+```python
+
+import finitediffx as fdx
+
+params = {"a":1., "b":2., "c":3.}
+
+@fdx.fgrad
+def func(params):
+    return params["a"]**2+params["b"]
+
+func(params)
+# {'a': Array(1.9995117, dtype=float32),
+#  'b': Array(0.9995117, dtype=float32),
+#  'c': Array(0., dtype=float32)}
+
 ```
 
 </details>

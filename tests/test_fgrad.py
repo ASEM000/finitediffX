@@ -207,16 +207,13 @@ def test_has_aux():
 
 
 def test_fgrad_error():
-    with pytest.raises(ValueError):
-        fgrad(lambda x: x, argnums=-1)
-
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         fgrad(lambda x: x, argnums=1.0)
 
     with pytest.raises(ValueError):
         fgrad(lambda x: x, offsets=Offset(accuracy=1))
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         fgrad(lambda x: x, argnums=[1, 2])
 
 
@@ -261,3 +258,19 @@ def test_value_and_fgrad():
 
     with pytest.raises(TypeError):
         value_and_fgrad(func, has_aux="")(1.0)
+
+
+def test_fgrad_pytree():
+    params = {"a": 1.0, "b": 2.0, "c": 3.0}
+
+    def f(params):
+        return params["a"] ** 2 + params["b"]
+
+    jax.grad(f)(params), fgrad(f)(params)
+
+    dparams_fdx = fgrad(f)(params)
+    dparams_jax = jax.grad(f)(params)
+
+    npt.assert_allclose(dparams_fdx["a"], dparams_jax["a"], atol=1e-3)
+    npt.assert_allclose(dparams_fdx["b"], dparams_jax["b"], atol=1e-3)
+    npt.assert_allclose(dparams_fdx["c"], dparams_jax["c"], atol=1e-3)
