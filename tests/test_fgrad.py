@@ -148,6 +148,8 @@ def test_fgrad_multiple_step_sizes():
             step_size=(None, 1e-3),
             offsets=(jnp.array([-1, 1.0]), jnp.array([-2, 2.0])),
             argnums=0,
+        )(
+            1.0, 2.0
         )  # non-tuple argnums with tuple step_size
 
     with pytest.raises(AssertionError):
@@ -164,11 +166,14 @@ def test_fgrad_multiple_step_sizes():
             func,
             offsets=(Offset(accuracy=0), Offset(accuracy=1)),
             argnums=(0, 1),
-        )
+        )(1.0, 1.0)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         # wrong accuracy
-        dfunc = fgrad(func, offsets=(Offset(accuracy=2), ""), argnums=(0, 1))
+        dfunc = fgrad(
+            func, offsets=(Offset(accuracy=2), Offset(accuracy=1)), argnums=(0, 1)
+        )
+        dfunc(1.0, 1.0)
 
 
 def test_fgrad_argnum():
@@ -211,10 +216,10 @@ def test_fgrad_error():
         fgrad(lambda x: x, argnums=1.0)
 
     with pytest.raises(ValueError):
-        fgrad(lambda x: x, offsets=Offset(accuracy=1))
+        fgrad(lambda x: x, offsets=Offset(accuracy=1))(1.0)
 
     with pytest.raises(TypeError):
-        fgrad(lambda x: x, argnums=[1, 2])
+        fgrad(lambda x: x, argnums=[1, 2])(1.0)
 
 
 def test_fdjvp():
@@ -259,6 +264,11 @@ def test_value_and_fgrad():
     with pytest.raises(TypeError):
         value_and_fgrad(func, has_aux="")(1.0)
 
+    v, g = value_and_fgrad(func, has_aux=True, argnums=(0,))(1.0)
+
+    assert v == (1.0, "value")
+    assert g[0] == jnp.array(2.0)
+
 
 def test_fgrad_pytree():
     params = {"a": 1.0, "b": 2.0, "c": 3.0}
@@ -266,9 +276,56 @@ def test_fgrad_pytree():
     def f(params):
         return params["a"] ** 2 + params["b"]
 
-    jax.grad(f)(params), fgrad(f)(params)
-
     dparams_fdx = fgrad(f)(params)
+    dparams_jax = jax.grad(f)(params)
+
+    npt.assert_allclose(dparams_fdx["a"], dparams_jax["a"], atol=1e-3)
+    npt.assert_allclose(dparams_fdx["b"], dparams_jax["b"], atol=1e-3)
+    npt.assert_allclose(dparams_fdx["c"], dparams_jax["c"], atol=1e-3)
+
+    step_size = {"a": 1, "b": 1, "c": 1}
+    offsets = {
+        "a": jnp.array([-1, 1]),
+        "b": jnp.array([-1, 1]),
+        "c": jnp.array([-1, 1]),
+    }
+
+    dparams_fdx = fgrad(f, step_size=step_size, offsets=offsets)(params)
+    dparams_jax = jax.grad(f)(params)
+
+    npt.assert_allclose(dparams_fdx["a"], dparams_jax["a"], atol=1e-3)
+    npt.assert_allclose(dparams_fdx["b"], dparams_jax["b"], atol=1e-3)
+    npt.assert_allclose(dparams_fdx["c"], dparams_jax["c"], atol=1e-3)
+
+    step_size = {"a": 1, "b": 1, "c": 0}
+    dparams_fdx = fgrad(f, step_size=step_size)(params)
+
+    # divide by zero
+    assert jnp.isnan(dparams_fdx["c"])
+
+    offsets = {"a": jnp.array([0, 0]), "b": jnp.array([-1, 1]), "c": jnp.array([-1, 1])}
+    dparams_fdx = fgrad(f, offsets=offsets)(params)
+
+    # generating coefficients for a will fail
+    assert jnp.isnan(dparams_fdx["a"])
+
+    (dparams_fdx,) = fgrad(f, argnums=(0,))(params)
+    (dparams_jax,) = jax.grad(f, argnums=(0,))(params)
+
+    npt.assert_allclose(dparams_fdx["a"], dparams_jax["a"], atol=1e-3)
+    npt.assert_allclose(dparams_fdx["b"], dparams_jax["b"], atol=1e-3)
+    npt.assert_allclose(dparams_fdx["c"], dparams_jax["c"], atol=1e-3)
+
+    step_size = {"a": 1, "b": 1, "c": 1}
+    offsets = {
+        "a": jnp.array([-1, 1]),
+        "b": jnp.array([-1, 1]),
+        "c": jnp.array([-1, 1]),
+    }
+
+    (dparams_fdx,) = fgrad(f, step_size=(step_size,), offsets=(offsets,), argnums=(0,))(
+        params
+    )
     dparams_jax = jax.grad(f)(params)
 
     npt.assert_allclose(dparams_fdx["a"], dparams_jax["a"], atol=1e-3)

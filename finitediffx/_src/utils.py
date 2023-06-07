@@ -138,6 +138,8 @@ def generate_finitediff_coeffs(
     """
 
     if derivative >= len(offsets):
-        raise ValueError(f"{len(offsets)=} must be larger than {derivative=}.")
+        raise ValueError(
+            f"{offsets=} of {len(offsets)=} must be larger than {derivative=}."
+        )
 
     return _generate_finitediff_coeffs(offsets, derivative)
