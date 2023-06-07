@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import dataclasses as dc
 import functools as ft
 from typing import Any, Callable, Sequence, TypeVar, Union
 
@@ -32,6 +33,7 @@ constant_treedef = jtu.tree_structure(0)
 PyTree = Any
 
 
+@dc.dataclass(frozen=True)
 class Offset:
     """Convinience class for finite difference offsets used inside `fgrad`
 
@@ -44,11 +46,7 @@ class Offset:
         Array(2., dtype=float32)
     """
 
-    def __init__(self, accuracy: int) -> None:
-        self.accuracy = accuracy
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(accuracy={self.accuracy})"
+    accuracy: int
 
 
 OffsetType = Union[jax.Array, Offset, PyTree]
@@ -96,27 +94,11 @@ def resolve_step_size(
         default = (2) ** (-23 / (2 * derivative))
         return (default,) * length
 
-    if isinstance(step_size, Sequence):
-        if len(step_size) != length:
-            raise AssertionError(f"{step_size=} must be a tuple of {length=}")
-        step_size = list(step_size)
-
-        for i, s in enumerate(step_size):
-            if s is None:
-                step_size[i] = (2) ** (-23 / (2 * derivative))
-            elif (ss := jtu.tree_flatten(s))[1] == treedef:
-                return ss[0]
-            elif not isinstance(s, (jax.Array, float)):
-                raise TypeError(f"{type(s)} not in {(jax.Array, float)}")
-        return tuple(step_size)
-
     step_size_leaves, step_size_treedef = jtu.tree_flatten(step_size)
 
     if step_size_treedef == treedef:
         # step_size is a pytree with the same structure as the input
         return step_size_leaves
-
-    print(step_size_treedef, treedef)
 
     raise TypeError(
         f"`step_size` must be of type:\n"
@@ -144,21 +126,6 @@ def resolve_offsets(
 
     if isinstance(offsets, jax.Array):
         return (offsets,) * length
-
-    if isinstance(offsets, Sequence):
-        if not len(offsets) == length:
-            raise AssertionError(f"{offsets=} must be a tuple of {length=}.")
-        offsets = list(offsets)
-        for i, o in enumerate(offsets):
-            if isinstance(o, Offset):
-                if o.accuracy < 2:
-                    raise ValueError(f"offset accuracy must be >=2, got {o.accuracy}")
-                o = jnp.array(_generate_central_offsets(derivative, o.accuracy))
-                offsets[i] = o
-            elif not isinstance(o, (Offset, jax.Array)):
-                raise TypeError(f"{type(o)} not an Offset")
-
-        return tuple(offsets)
 
     offsets_leaves, offsets_treedef = jtu.tree_flatten(offsets)
 

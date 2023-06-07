@@ -142,7 +142,7 @@ def test_fgrad_multiple_step_sizes():
         npt.assert_allclose(dval[0], 4.0, atol=1e-3)
         npt.assert_allclose(dval[1], 4.0, atol=1e-3)
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError):
         dfunc = fgrad(
             func,
             step_size=(None, 1e-3),
@@ -263,6 +263,11 @@ def test_value_and_fgrad():
 
     with pytest.raises(TypeError):
         value_and_fgrad(func, has_aux="")(1.0)
+
+    v, g = value_and_fgrad(func, has_aux=True, argnums=(0,))(1.0)
+
+    assert v == (1.0, "value")
+    assert g[0] == jnp.array(2.0)
 
 
 def test_fgrad_pytree():
