@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import functools as ft
-from typing import Callable, NamedTuple, TypeVar, Union
+from typing import Any, Callable, NamedTuple, Sequence, TypeVar, Union
 
 import jax
 import jax.numpy as jnp
@@ -24,21 +24,31 @@ from typing_extensions import ParamSpec
 
 from finitediffx._src.utils import _generate_central_offsets, generate_finitediff_coeffs
 
+__all__ = ("fgrad", "Offset", "define_fdjvp", "value_and_fgrad")
+
 P = ParamSpec("P")
 T = TypeVar("T")
-
-
-__all__ = ("fgrad", "Offset", "define_fdjvp", "value_and_fgrad")
+constant_treedef = jtu.tree_structure(0)
+PyTree = Any
 
 
 class Offset(NamedTuple):
-    """Convinience class for finite difference offsets used inside `fgrad`"""
+    """Convinience class for finite difference offsets used inside `fgrad`
+
+    Args:
+        accuracy: The accuracy of the finite difference scheme. Must be >=2.
+
+    Example:
+        >>> import finitediffx as fdx
+        >>> fdx.fgrad(lambda x: x**2, offsets=fdx.Offset(accuracy=2))(1.0)
+        Array(2., dtype=float32)
+    """
 
     accuracy: int
 
 
-OffsetType = Union[jax.Array, Offset]
-StepsizeType = Union[jax.Array, float]
+OffsetType = Union[jax.Array, Offset, PyTree]
+StepsizeType = Union[jax.Array, float, PyTree]
 
 
 def _evaluate_func_at_shifted_steps_along_argnum(
@@ -68,18 +78,22 @@ def _evaluate_func_at_shifted_steps_along_argnum(
 
 
 def resolve_step_size(
-    step_size: StepsizeType | tuple[StepsizeType, ...] | None,
-    length: int | None,
+    step_size: StepsizeType | Sequence[StepsizeType] | None,
+    treedef: jtu.PyTreeDef,
     derivative: int,
-) -> tuple[StepsizeType, ...] | StepsizeType:
+) -> Sequence[StepsizeType] | StepsizeType:
     # return non-tuple values if length is None
+    is_leaf = jtu.treedef_is_leaf(treedef)
+    length = treedef.num_leaves
+
     if isinstance(step_size, (jax.Array, float)):
-        return ((step_size,) * length) if length else step_size
+        return (step_size,) * length
+
     if step_size is None:
         default = (2) ** (-23 / (2 * derivative))
-        return ((default,) * length) if length else default
+        return (default,) * length
 
-    if isinstance(step_size, tuple) and length:
+    if isinstance(step_size, Sequence) and not is_leaf:
         assert len(step_size) == length, f"step_size must be a tuple of length {length}"
         step_size = list(step_size)
         for i, s in enumerate(step_size):
@@ -89,30 +103,42 @@ def resolve_step_size(
                 raise TypeError(f"{type(s)} not in {(jax.Array, float)}")
         return tuple(step_size)
 
+    step_size_leaves, step_size_treedef = jtu.tree_flatten(step_size)
+
+    if step_size_treedef == treedef:
+        # step_size is a pytree with the same structure as the input
+        return step_size_leaves
+
     raise TypeError(
         f"`step_size` must be of type:\n"
         f"- `jax.Array`\n"
         f"- `float`\n"
         f"- tuple of `jax.Array` or `float` for tuple argnums.\n"
+        f"- pytree with the same structure as the desired arg.\n"
         f"but got {type(step_size)=}"
     )
 
 
 def resolve_offsets(
-    offsets: tuple[OffsetType | None, ...] | OffsetType | None,
-    length: int,
+    offsets: Sequence[OffsetType | None] | OffsetType | None,
+    treedef: jax.tree_util.PyTreeDef,
     derivative: int,
 ) -> tuple[OffsetType, ...] | OffsetType:
     # single value
+
+    is_leaf = jtu.treedef_is_leaf(treedef)
+    length = treedef.num_leaves
+
     if isinstance(offsets, Offset):
         if offsets.accuracy < 2:
             raise ValueError(f"offset accuracy must be >=2, got {offsets.accuracy}")
         offsets = jnp.array(_generate_central_offsets(derivative, offsets.accuracy))
-        return ((offsets,) * length) if length else offsets
-    if isinstance(offsets, jax.Array):
-        return ((offsets,) * length) if length else offsets
+        return (offsets,) * length
 
-    if isinstance(offsets, tuple) and length:
+    if isinstance(offsets, jax.Array):
+        return (offsets,) * length
+
+    if isinstance(offsets, Sequence) and not is_leaf:
         assert len(offsets) == length, f"`offsets` must be a tuple of length {length}"
         offsets = list(offsets)
         for i, o in enumerate(offsets):
@@ -126,11 +152,18 @@ def resolve_offsets(
 
         return tuple(offsets)
 
+    offsets_leaves, offsets_treedef = jtu.tree_flatten(offsets)
+
+    if offsets_treedef == treedef:
+        # offsets is a pytree with the same structure as the input
+        return offsets_leaves
+
     raise TypeError(
         f"`offsets` must be of type:\n"
         f"- `Offset`\n"
         f"- `jax.Array`\n"
         f"- tuple of `Offset` or `jax.Array` for tuple argnums.\n"
+        f"- pytree with the same structure as the desired arg.\n"
         f"but got {type(offsets)=}"
     )
 
@@ -146,25 +179,6 @@ def _fgrad_along_argnum(
     if not isinstance(argnum, int):
         raise TypeError(f"argnum must be an integer, got {type(argnum)}")
 
-    def _leaves_fgrad(func: Callable, *, length: int):
-        kwargs = dict(length=length, derivative=derivative)
-        step_size_ = resolve_step_size(step_size, **kwargs)
-        offsets_ = resolve_offsets(offsets, **kwargs)
-
-        dfuncs = [
-            _evaluate_func_at_shifted_steps_along_argnum(
-                func=func,
-                coeffs=generate_finitediff_coeffs(oi, derivative),
-                offsets=oi,
-                step_size=si,
-                derivative=derivative,
-                argnum=i,
-            )
-            for i, (oi, si) in enumerate(zip(offsets_, step_size_))
-        ]
-
-        return lambda *a, **k: [df(*a, **k) for df in dfuncs]
-
     def wrapper(*args, **kwargs):
         arg_leaves, arg_treedef = jtu.tree_flatten(args[argnum])
         args_ = list(args)
@@ -173,9 +187,23 @@ def _fgrad_along_argnum(
             args_[argnum] = jtu.tree_unflatten(arg_treedef, leaves)
             return func(*args_, **kwargs)
 
-        dfunc = _leaves_fgrad(func_wrapper, length=len(arg_leaves))
+        spec = dict(treedef=arg_treedef, derivative=derivative)
+        step_size_ = resolve_step_size(step_size, **spec)
+        offsets_ = resolve_offsets(offsets, **spec)
 
-        return jtu.tree_unflatten(arg_treedef, dfunc(*arg_leaves))
+        flat_result = [
+            _evaluate_func_at_shifted_steps_along_argnum(
+                func=func_wrapper,
+                coeffs=generate_finitediff_coeffs(oi, derivative),
+                offsets=oi,
+                step_size=si,
+                derivative=derivative,
+                argnum=i,
+            )(*arg_leaves)
+            for i, (oi, si) in enumerate(zip(offsets_, step_size_))
+        ]
+
+        return jtu.tree_unflatten(arg_treedef, flat_result)
 
     return wrapper
 
@@ -238,13 +266,13 @@ def value_and_fgrad(
 
     if isinstance(argnums, int):
         # fgrad(func, argnums=0)
-        kwargs = dict(length=None, derivative=derivative)
+        spec = dict(treedef=constant_treedef, derivative=derivative)
 
         dfunc = _fgrad_along_argnum(
             func=func_,
             argnum=argnums,
-            step_size=resolve_step_size(step_size, **kwargs),
-            offsets=resolve_offsets(offsets, **kwargs),
+            step_size=step_size,
+            offsets=offsets,
             derivative=derivative,
         )
 
@@ -267,7 +295,8 @@ def value_and_fgrad(
         # fgrad(func, argnums=(0,1))
         # return a tuple of derivatives evaluated at each argnum
         # this behavior is similar to jax.grad(func, argnums=(...))
-        kwargs = dict(length=len(argnums), derivative=derivative)
+        treedef = jtu.tree_structure(argnums)
+        spec = dict(treedef=treedef, derivative=derivative)
 
         dfuncs = [
             _fgrad_along_argnum(
@@ -278,8 +307,8 @@ def value_and_fgrad(
                 derivative=derivative,
             )
             for offsets_i, step_size_i, argnum_i in zip(
-                resolve_offsets(offsets, **kwargs),
-                resolve_step_size(step_size, **kwargs),
+                resolve_offsets(offsets, **spec),
+                resolve_step_size(step_size, **spec),
                 argnums,
             )
         ]
@@ -436,7 +465,7 @@ def define_fdjvp(
 
     @func.defjvp
     def _(primals, tangents):
-        kwargs = dict(length=len(primals), derivative=1)
+        kwargs = dict(treedef=jtu.tree_structure(primals), derivative=1)
         step_size_ = resolve_step_size(step_size, **kwargs)
         offsets_ = resolve_offsets(offsets, **kwargs)
         primal_out = func(*primals)
