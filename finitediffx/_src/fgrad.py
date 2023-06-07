@@ -27,7 +27,7 @@ P = ParamSpec("P")
 T = TypeVar("T")
 
 
-__all__ = ("fgrad", "Offset", "define_fdjvp")
+__all__ = ("fgrad", "Offset", "define_fdjvp", "value_and_fgrad")
 
 
 class Offset(NamedTuple):
