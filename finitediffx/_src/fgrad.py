@@ -148,8 +148,8 @@ def _fgrad_along_argnum(
 
     def _leaves_fgrad(func: Callable, *, length: int):
         kwargs = dict(length=length, derivative=derivative)
-        resolved_step_size = resolve_step_size(step_size, **kwargs)
-        resolved_offsets = resolve_offsets(offsets, **kwargs)
+        step_size_ = resolve_step_size(step_size, **kwargs)
+        offsets_ = resolve_offsets(offsets, **kwargs)
 
         dfuncs = [
             _evaluate_func_at_shifted_steps_along_argnum(
@@ -160,13 +160,10 @@ def _fgrad_along_argnum(
                 derivative=derivative,
                 argnum=i,
             )
-            for i, (oi, si) in enumerate(zip(resolved_offsets, resolved_step_size))
+            for i, (oi, si) in enumerate(zip(offsets_, step_size_))
         ]
 
-        def wrapper(*a, **k):
-            return [df(*a, **k) for df in dfuncs]
-
-        return wrapper
+        return lambda *a, **k: [df(*a, **k) for df in dfuncs]
 
     def wrapper(*args, **kwargs):
         arg_leaves, arg_treedef = jtu.tree_flatten(args[argnum])
@@ -176,7 +173,7 @@ def _fgrad_along_argnum(
             args_[argnum] = jtu.tree_unflatten(arg_treedef, leaves)
             return func(*args_, **kwargs)
 
-        dfunc = _leaves_fgrad(func=func_wrapper, length=len(arg_leaves))
+        dfunc = _leaves_fgrad(func_wrapper, length=len(arg_leaves))
 
         return jtu.tree_unflatten(arg_treedef, dfunc(*arg_leaves))
 
@@ -368,18 +365,18 @@ def fgrad(
     if has_aux:
 
         @ft.wraps(func)
-        def aux_wrapper(*a, **k):
+        def wrapper(*a, **k):
             (_, aux), g = value_and_fgrad_func(*a, **k)
             return g, aux
 
-    else:
+        return wrapper
 
-        @ft.wraps(func)
-        def wrapper(*a, **k):
-            _, g = value_and_fgrad_func(*a, **k)
-            return g
+    @ft.wraps(func)
+    def wrapper(*a, **k):
+        _, g = value_and_fgrad_func(*a, **k)
+        return g
 
-    return aux_wrapper if has_aux else wrapper
+    return wrapper
 
 
 def define_fdjvp(
