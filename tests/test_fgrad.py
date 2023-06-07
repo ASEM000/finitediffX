@@ -8,7 +8,13 @@ import numpy.testing as npt
 import pytest
 from jax.experimental import enable_x64
 
-from finitediffx import Offset, define_fdjvp, fgrad, generate_finitediff_coeffs
+from finitediffx import (
+    Offset,
+    define_fdjvp,
+    fgrad,
+    generate_finitediff_coeffs,
+    value_and_fgrad,
+)
 
 
 def test_generate_finitediff_coeffs():
@@ -190,6 +196,16 @@ def test_fgrad_argnum():
         all_correct(f1r, f2r)
 
 
+def test_has_aux():
+    def func(x):
+        return x**2, "value"
+
+    v, a = fgrad(func, has_aux=True)(1.0)
+
+    assert v == 2.0
+    assert a == "value"
+
+
 def test_fgrad_error():
     with pytest.raises(ValueError):
         fgrad(lambda x: x, argnums=-1)
@@ -235,3 +251,13 @@ def test_fdjvp():
         jnp.array(4.0),
         atol=1e-3,
     )
+
+
+def test_value_and_fgrad():
+    def func(x):
+        return x**2, "value"
+
+    assert value_and_fgrad(func, has_aux=True)(1.0) == ((1.0, "value"), 2.0)
+
+    with pytest.raises(TypeError):
+        value_and_fgrad(func, has_aux="")(1.0)

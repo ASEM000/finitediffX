@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ._src.fgrad import Offset, define_fdjvp, fgrad
+from ._src.fgrad import Offset, define_fdjvp, fgrad, value_and_fgrad
 from ._src.finite_diff import (
     curl,
     difference,
@@ -33,6 +33,7 @@ __all__ = (
     "laplacian",
     "hessian",
     "fgrad",
+    "value_and_fgrad",
     "Offset",
     "define_fdjvp",
     "generate_finitediff_coeffs",
