@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import functools as ft
-from typing import Any, Callable, NamedTuple, Sequence, TypeVar, Union
+from typing import Any, Callable, Sequence, TypeVar, Union
 
 import jax
 import jax.numpy as jnp
@@ -32,7 +32,7 @@ constant_treedef = jtu.tree_structure(0)
 PyTree = Any
 
 
-class Offset(NamedTuple):
+class Offset:
     """Convinience class for finite difference offsets used inside `fgrad`
 
     Args:
@@ -44,7 +44,11 @@ class Offset(NamedTuple):
         Array(2., dtype=float32)
     """
 
-    accuracy: int
+    def __init__(self, accuracy: int) -> None:
+        self.accuracy = accuracy
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(accuracy={self.accuracy})"
 
 
 OffsetType = Union[jax.Array, Offset, PyTree]
@@ -83,7 +87,6 @@ def resolve_step_size(
     derivative: int,
 ) -> Sequence[StepsizeType] | StepsizeType:
     # return non-tuple values if length is None
-    is_leaf = jtu.treedef_is_leaf(treedef)
     length = treedef.num_leaves
 
     if isinstance(step_size, (jax.Array, float)):
@@ -93,12 +96,16 @@ def resolve_step_size(
         default = (2) ** (-23 / (2 * derivative))
         return (default,) * length
 
-    if isinstance(step_size, Sequence) and not is_leaf:
-        assert len(step_size) == length, f"step_size must be a tuple of length {length}"
+    if isinstance(step_size, Sequence):
+        if len(step_size) != length:
+            raise AssertionError(f"{step_size=} must be a tuple of {length=}")
         step_size = list(step_size)
+
         for i, s in enumerate(step_size):
             if s is None:
                 step_size[i] = (2) ** (-23 / (2 * derivative))
+            elif (ss := jtu.tree_flatten(s))[1] == treedef:
+                return ss[0]
             elif not isinstance(s, (jax.Array, float)):
                 raise TypeError(f"{type(s)} not in {(jax.Array, float)}")
         return tuple(step_size)
@@ -108,6 +115,8 @@ def resolve_step_size(
     if step_size_treedef == treedef:
         # step_size is a pytree with the same structure as the input
         return step_size_leaves
+
+    print(step_size_treedef, treedef)
 
     raise TypeError(
         f"`step_size` must be of type:\n"
@@ -125,8 +134,6 @@ def resolve_offsets(
     derivative: int,
 ) -> tuple[OffsetType, ...] | OffsetType:
     # single value
-
-    is_leaf = jtu.treedef_is_leaf(treedef)
     length = treedef.num_leaves
 
     if isinstance(offsets, Offset):
@@ -138,8 +145,9 @@ def resolve_offsets(
     if isinstance(offsets, jax.Array):
         return (offsets,) * length
 
-    if isinstance(offsets, Sequence) and not is_leaf:
-        assert len(offsets) == length, f"`offsets` must be a tuple of length {length}"
+    if isinstance(offsets, Sequence):
+        if not len(offsets) == length:
+            raise AssertionError(f"{offsets=} must be a tuple of {length=}.")
         offsets = list(offsets)
         for i, o in enumerate(offsets):
             if isinstance(o, Offset):
@@ -230,6 +238,8 @@ def value_and_fgrad(
         offsets: offsets for the finite difference stencil. Accepted types are:
             - `jax.Array` defining location of function evaluation points.
             - `Offset` with accuracy field to automatically generate offsets.
+            - pytree of `jax.Array`/`Offset` to define offsets for each argument
+                of the same pytree structure as argument defined by `argnums`.
         derivative: derivative order. Defaults to 1.
         has_aux: whether the function returns an auxiliary output. Defaults to False.
             If True, the derivative function will return a tuple of the form:
@@ -266,8 +276,6 @@ def value_and_fgrad(
 
     if isinstance(argnums, int):
         # fgrad(func, argnums=0)
-        spec = dict(treedef=constant_treedef, derivative=derivative)
-
         dfunc = _fgrad_along_argnum(
             func=func_,
             argnum=argnums,
@@ -295,22 +303,30 @@ def value_and_fgrad(
         # fgrad(func, argnums=(0,1))
         # return a tuple of derivatives evaluated at each argnum
         # this behavior is similar to jax.grad(func, argnums=(...))
-        treedef = jtu.tree_structure(argnums)
-        spec = dict(treedef=treedef, derivative=derivative)
+        if isinstance(offsets, tuple):
+            if len(offsets) != len(argnums):
+                raise AssertionError("offsets must have the same length as argnums")
+            offsets_ = offsets
+        else:
+            offsets_ = (offsets,) * len(argnums)
+
+        if isinstance(step_size, tuple):
+            if len(step_size) != len(argnums):
+                raise AssertionError("step_size must have the same length as argnums")
+            step_size_ = step_size
+
+        else:
+            step_size_ = (step_size,) * len(argnums)
 
         dfuncs = [
             _fgrad_along_argnum(
                 func=func_,
-                argnum=argnum_i,
-                step_size=step_size_i,
-                offsets=offsets_i,
+                argnum=ai,
+                step_size=si,
+                offsets=oi,
                 derivative=derivative,
             )
-            for offsets_i, step_size_i, argnum_i in zip(
-                resolve_offsets(offsets, **spec),
-                resolve_step_size(step_size, **spec),
-                argnums,
-            )
+            for oi, si, ai in zip(offsets_, step_size_, argnums)
         ]
 
         if has_aux:
@@ -355,6 +371,8 @@ def fgrad(
         offsets: offsets for the finite difference stencil. Accepted types are:
             - `jax.Array` defining location of function evaluation points.
             - `Offset` with accuracy field to automatically generate offsets.
+            - pytree of `jax.Array`/`Offset` to define offsets for each argument
+                of the same pytree structure as argument defined by `argnums`.
         derivative: derivative order. Defaults to 1.
         has_aux: whether the function returns an auxiliary output. Defaults to False.
             If True, the derivative function will return a tuple of the form:

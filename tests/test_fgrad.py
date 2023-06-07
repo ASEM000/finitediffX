@@ -142,7 +142,7 @@ def test_fgrad_multiple_step_sizes():
         npt.assert_allclose(dval[0], 4.0, atol=1e-3)
         npt.assert_allclose(dval[1], 4.0, atol=1e-3)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(AssertionError):
         dfunc = fgrad(
             func,
             step_size=(None, 1e-3),
@@ -166,11 +166,14 @@ def test_fgrad_multiple_step_sizes():
             func,
             offsets=(Offset(accuracy=0), Offset(accuracy=1)),
             argnums=(0, 1),
-        )
+        )(1.0, 1.0)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         # wrong accuracy
-        dfunc = fgrad(func, offsets=(Offset(accuracy=2), ""), argnums=(0, 1))
+        dfunc = fgrad(
+            func, offsets=(Offset(accuracy=2), Offset(accuracy=1)), argnums=(0, 1)
+        )
+        dfunc(1.0, 1.0)
 
 
 def test_fgrad_argnum():
@@ -300,3 +303,36 @@ def test_fgrad_pytree():
 
     # generating coefficients for a will fail
     assert jnp.isnan(dparams_fdx["a"])
+
+    # dparams_fdx, = fgrad(f, argnums=(0,))(params)
+    # dparams_jax, = jax.grad(f, argnums=(0,))(params)
+
+    # npt.assert_allclose(dparams_fdx["a"], dparams_jax["a"], atol=1e-3)
+    # npt.assert_allclose(dparams_fdx["b"], dparams_jax["b"], atol=1e-3)
+    # npt.assert_allclose(dparams_fdx["c"], dparams_jax["c"], atol=1e-3)
+
+    # step_size = {"a": 1, "b": 1, "c": 1}
+    # offsets = {
+    #     "a": jnp.array([-1, 1]),
+    #     "b": jnp.array([-1, 1]),
+    #     "c": jnp.array([-1, 1]),
+    # }
+
+    # dparams_fdx = fgrad(f, step_size=step_size, offsets=offsets)(params)
+    # dparams_jax = jax.grad(f)(params)
+
+    # npt.assert_allclose(dparams_fdx["a"], dparams_jax["a"], atol=1e-3)
+    # npt.assert_allclose(dparams_fdx["b"], dparams_jax["b"], atol=1e-3)
+    # npt.assert_allclose(dparams_fdx["c"], dparams_jax["c"], atol=1e-3)
+
+    # step_size = {"a": 1, "b": 1, "c": 0}
+    # dparams_fdx = fgrad(f, step_size=step_size)(params)
+
+    # # divide by zero
+    # assert jnp.isnan(dparams_fdx["c"])
+
+    # offsets = {"a": jnp.array([0, 0]), "b": jnp.array([-1, 1]), "c": jnp.array([-1, 1])}
+    # dparams_fdx = fgrad(f, offsets=offsets)(params)
+
+    # # generating coefficients for a will fail
+    # assert jnp.isnan(dparams_fdx["a"])
