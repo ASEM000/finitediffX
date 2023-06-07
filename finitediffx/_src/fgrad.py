@@ -58,7 +58,7 @@ def _evaluate_func_at_shifted_steps_along_argnum(
         # yield function output at shifted points
         for coeff, dx in zip(coeffs, dxs):
             shifted_args = list(args)
-            shifted_args[argnum] += dx
+            shifted_args[argnum] = jax.tree_map(lambda x: x + dx, shifted_args[argnum])
             yield coeff * func(*shifted_args, **kwargs) / (step_size**derivative)
 
     return wrapper
