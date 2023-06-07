@@ -68,13 +68,18 @@ def _evaluate_func_at_shifted_steps_along_argnum(
     dxs = offsets * step_size
 
     def wrapper(*args, **kwargs):
-        # yield function output at shifted points
         result = []
         for coeff, dx in zip(coeffs, dxs):
             args_ = list(args)
             args_[argnum] += dx
             result += [coeff * func(*args_, **kwargs) / (step_size**derivative)]
-        return sum(result)
+        out = sum(result)
+
+        if hasattr(args[argnum], "shape"):
+            # TODO: fix this
+            out = jnp.broadcast_to(out, args[argnum].shape)
+            out = out / out.size
+        return out
 
     return wrapper
 
@@ -155,7 +160,7 @@ def _fgrad_along_argnum(
         raise TypeError(f"argnum must be an integer, got {type(argnum)}")
 
     def wrapper(*args, **kwargs):
-        arg_leaves, arg_treedef = jtu.tree_flatten(args[argnum])
+        flat_args, arg_treedef = jtu.tree_flatten(args[argnum])
         args_ = list(args)
 
         def func_wrapper(*leaves):
@@ -174,7 +179,7 @@ def _fgrad_along_argnum(
                 step_size=si,
                 derivative=derivative,
                 argnum=i,
-            )(*arg_leaves)
+            )(*flat_args)
             for i, (oi, si) in enumerate(zip(offsets_, step_size_))
         ]
 

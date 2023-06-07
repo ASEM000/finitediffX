@@ -171,7 +171,7 @@ def difference(
     *,
     axis: int = 0,
     accuracy: int = 1,
-    step_size: float | jax.Array = 1,
+    step_size: float | jax.Array = 1.0,
     derivative: int = 1,
     method: MethodKind = "central",
 ) -> jax.Array:
