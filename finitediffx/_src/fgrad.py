@@ -139,6 +139,7 @@ def fgrad(
     step_size: StepsizeType | None = None,
     offsets: OffsetType = Offset(accuracy=3),
     derivative: int = 1,
+    has_aux: bool = False,
 ) -> Callable:
     """Finite difference derivative of a function with respect to one of its arguments.
     similar to jax.grad but with finite difference approximation
@@ -154,9 +155,13 @@ def fgrad(
             - `jax.Array` defining location of function evaluation points.
             - `Offset` with accuracy field to automatically generate offsets.
         derivative: derivative order. Defaults to 1.
+        has_aux: whether the function returns an auxiliary output. Defaults to False.
+            If True, the derivative function will return a tuple of the form:
+            (derivative, aux) otherwise it will return only the derivative.
 
     Returns:
-        Callable: derivative of the function
+        Derivative of the function if `has_aux` is False, otherwise a tuple of
+        the form: (derivative, aux)
 
     Example:
         >>> import finitediffx as fdx
@@ -176,18 +181,96 @@ def fgrad(
         Array(6., dtype=float32)
 
     """
+    value_and_fgrad_func = value_and_fgrad(
+        func=func,
+        argnums=argnums,
+        step_size=step_size,
+        offsets=offsets,
+        derivative=derivative,
+        has_aux=has_aux,
+    )
+
+    if has_aux:
+
+        @ft.wraps(func)
+        def aux_wrapper(*a, **k):
+            (_, aux), g = value_and_fgrad_func(*a, **k)
+            return g, aux
+
+    else:
+
+        @ft.wraps(func)
+        def wrapper(*a, **k):
+            _, g = value_and_fgrad_func(*a, **k)
+            return g
+
+    return aux_wrapper if has_aux else wrapper
+
+
+def value_and_fgrad(
+    func: Callable,
+    *,
+    argnums: int | tuple[int, ...] = 0,
+    step_size: StepsizeType | None = None,
+    offsets: OffsetType = Offset(accuracy=3),
+    derivative: int = 1,
+    has_aux: bool = False,
+) -> Callable:
+    """Finite difference derivative of a function with respect to one of its arguments.
+    similar to jax.grad but with finite difference approximation
+
+    Args:
+        func: function to differentiate
+        argnums: argument number to differentiate. Defaults to 0.
+            If a tuple is passed, the function is differentiated with respect to
+            all the arguments in the tuple.
+        step_size: step size for the finite difference stencil. If `None`, the step size
+            is set to `(2) ** (-23 / (2 * derivative))`
+        offsets: offsets for the finite difference stencil. Accepted types are:
+            - `jax.Array` defining location of function evaluation points.
+            - `Offset` with accuracy field to automatically generate offsets.
+        derivative: derivative order. Defaults to 1.
+        has_aux: whether the function returns an auxiliary output. Defaults to False.
+            If True, the derivative function will return a tuple of the form:
+            ((value,aux), derivative) otherwise (value, derivative)
+
+    Returns:
+        Value and derivative of the function if `has_aux` is False.
+        If `has_aux` is True, the derivative function will return a tuple of the form:
+        ((value,aux), derivative)
+
+    Example:
+        >>> import finitediffx as fdx
+        >>> import jax
+        >>> import jax.numpy as jnp
+        >>> def f(x, y):
+        ...    return x**2 + y**2
+        >>> df=fdx.value_and_fgrad(
+        ...    func=f,
+        ...    argnums=1,  # differentiate with respect to y
+        ...    offsets=fdx.Offset(accuracy=2)  # use 2nd order accurate finite difference
+        ... )
+        >>> df(2.0, 3.0)
+        (13.0, Array(6., dtype=float32))
+
+    """
     func.__doc__ = (
         f"Finite difference derivative of {getattr(func,'__name__', func)}"
         f" w.r.t {argnums=}\n\n{func.__doc__}"
     )
+    if not isinstance(has_aux, bool):
+        raise TypeError(f"{type(has_aux)} not a bool")
+
+    func_ = (lambda *a, **k: func(*a, **k)[0]) if has_aux else func
 
     if isinstance(argnums, int):
         # fgrad(func, argnums=0)
         kwargs = dict(length=None, derivative=derivative)
         step_size = _canonicalize_step_size(step_size, **kwargs)
         offsets = _canonicalize_offsets(offsets, **kwargs)
+
         dfunc = _evaluate_func_at_shifted_steps_along_argnum(
-            func=func,
+            func=func_,
             coeffs=generate_finitediff_coeffs(offsets, derivative),
             offsets=offsets,
             step_size=step_size,
@@ -195,7 +278,24 @@ def fgrad(
             argnum=argnums,
         )
 
-        return ft.wraps(func)(lambda *a, **k: sum(dfunc(*a, **k)))
+        if has_aux is True:
+
+            @ft.wraps(func)
+            def aux_wrapper(*a, **k):
+                # should give error if the function does not
+                # return two item tuple
+                value, aux = func(*a, **k)
+                # we can check if the value is a scalar
+                # but this is unnecessary restriction for the fd
+                return (value, aux), sum(dfunc(*a, **k))
+
+        else:
+
+            @ft.wraps(func)
+            def wrapper(*a, **k):
+                return func(*a, **k), sum(dfunc(*a, **k))
+
+        return aux_wrapper if has_aux else wrapper
 
     if isinstance(argnums, tuple):
         # fgrad(func, argnums=(0,1))
@@ -203,9 +303,9 @@ def fgrad(
         # this behavior is similar to jax.grad(func, argnums=(...))
         kwargs = dict(length=len(argnums), derivative=derivative)
 
-        dfuncs = [
+        dfuncs = (
             _evaluate_func_at_shifted_steps_along_argnum(
-                func=func,
+                func=func_,
                 coeffs=generate_finitediff_coeffs(offsets_i, derivative),
                 offsets=offsets_i,
                 step_size=step_size_i,
@@ -217,8 +317,24 @@ def fgrad(
                 _canonicalize_step_size(step_size, **kwargs),
                 argnums,
             )
-        ]
-        return ft.wraps(func)(lambda *a, **k: tuple(sum(df(*a, **k)) for df in dfuncs))
+        )
+
+        if has_aux:
+
+            @ft.wraps(func)
+            def aux_wrapper(*a, **k):
+                # destructuring the tuple to ensure
+                # two item tuple is returned
+                value, aux = func(*a, **k)
+                return (value, aux), tuple(sum(df(*a, **k)) for df in dfuncs)
+
+        else:
+
+            @ft.wraps(func)
+            def wrapper(*a, **k):
+                return func(*a, **k), tuple(sum(df(*a, **k)) for df in dfuncs)
+
+        return aux_wrapper if has_aux else wrapper
 
     raise ValueError(f"argnums must be an int or a tuple of ints, got {argnums}")
 
