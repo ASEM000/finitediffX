@@ -94,6 +94,7 @@ def _evaluate_func_at_shifted_steps_along_argnum(
 
             # `jax.vmap` can be used here and perform better
             # but it would fail in case of non-tracable code
+            # may have try/excpet wiht `jax.errors.TracerArrayConversionError``
             result = jnp.array([perturb_element(i) for i in arange])
 
             # the function might return non-scalars
