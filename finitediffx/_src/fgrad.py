@@ -66,20 +66,43 @@ def _evaluate_func_at_shifted_steps_along_argnum(
         raise ValueError(f"argnum must be a non-negative integer, got {argnum}")
 
     dxs = offsets * step_size
+    den = step_size**derivative
 
     def wrapper(*args, **kwargs):
-        result = []
-        for coeff, dx in zip(coeffs, dxs):
-            args_ = list(args)
-            args_[argnum] += dx
-            result += [coeff * func(*args_, **kwargs) / (step_size**derivative)]
-        out = sum(result)
+        if not hasattr(args[argnum], "shape"):
+            # scalar perturbation
+            def perturb(h):
+                args_ = list(args)
+                args_[argnum] += h
+                return func(*args_, **kwargs)
 
-        if hasattr(args[argnum], "shape"):
-            # TODO: fix this
-            out = jnp.broadcast_to(out, args[argnum].shape)
-            out = out / out.size
-        return out
+            return sum([coeff * perturb(dx) / den for coeff, dx in zip(coeffs, dxs)])
+
+        # elementwise perturbation
+        # should be much slower than jax.grad for large arrays
+        # but can be used for non-tracable code where jax.grad fails
+        def perturb(h):
+            xflat = jnp.array(args[argnum].flatten())
+            arange = jnp.arange(len(xflat))
+            shape = args[argnum].shape
+
+            def perturb_element(i):
+                xflat_ = xflat.at[i].add(h)
+                args_ = list(args)
+                args_[argnum] = xflat_.reshape(shape)
+                return func(*args_, **kwargs)
+
+            # `jax.vmap` can be used here and perform better
+            # but it would fail in case of non-tracable code
+            result = jnp.array([perturb_element(i) for i in arange])
+
+            # the function might return non-scalars
+            try:
+                return result.reshape(shape)
+            except Exception:
+                raise TypeError("Non scalar-output.")
+
+        return sum([coeff * perturb(dx) / den for coeff, dx in zip(coeffs, dxs)])
 
     return wrapper
 
