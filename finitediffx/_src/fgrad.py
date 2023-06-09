@@ -117,6 +117,91 @@ def resolve_offsets(
     )
 
 
+# should be much slower than jax.grad for large arrays
+# but can be used for non-tracable code where jax.grad fails
+def _array_perturb(
+    *,
+    flat_func: Callable,
+    flat_args: tuple[Any, ...],
+    flat_argnum: int,
+    h: float,
+) -> jax.Array:
+    indices = jnp.arange(flat_args[flat_argnum].size)
+    shape = flat_args[flat_argnum].shape
+
+    def perturb_element(index):
+        return flat_func(
+            *(
+                flat_args[:flat_argnum]
+                + (
+                    jnp.array(flat_args[flat_argnum])
+                    .reshape(-1)
+                    .at[index]
+                    .add(h)
+                    .reshape(shape),
+                )
+                + flat_args[flat_argnum + 1 :]
+            )
+        )
+
+    try:
+        # in case of tracable code (jax code)
+        result = jax.vmap(perturb_element)(indices)
+    except jax.errors.TracerArrayConversionError:
+        # non-tracable code e.g. numpy code
+        result = jnp.array([perturb_element(index) for index in indices])
+
+    try:
+        return result.reshape(shape)
+    except Exception:
+        # the function might return non-scalars
+        raise TypeError("Non scalar-output.")
+
+
+# scalar perturbation
+def _scalar_perturb(
+    *,
+    flat_func: Callable,
+    flat_args: tuple[Any, ...],
+    flat_argnum: int,
+    h: float,
+):
+    return flat_func(
+        *(
+            flat_args[:flat_argnum]
+            + (flat_args[flat_argnum] + h,)
+            + flat_args[flat_argnum + 1 :]
+        )
+    )
+
+
+def _perturb_flat_args(
+    *,
+    flat_func: Callable,
+    coeffs: jax.Array,
+    flat_offsets: jax.Array,
+    flat_argnum: int,
+    flat_step_size: jax.Array,
+    derivative: int,
+):
+    def flat_args_wrapper(*flat_args):
+        is_array = hasattr(flat_args[flat_argnum], "shape")
+        perturb = _array_perturb if is_array else _scalar_perturb
+        return sum(
+            coeff
+            * perturb(
+                flat_func=flat_func,
+                flat_args=flat_args,
+                flat_argnum=flat_argnum,
+                h=dx,
+            )
+            / flat_step_size**derivative
+            for coeff, dx in zip(coeffs, flat_offsets * flat_step_size)
+        )
+
+    return flat_args_wrapper
+
+
 def _fgrad_along_argnum(
     func: Callable,
     *,
@@ -125,84 +210,34 @@ def _fgrad_along_argnum(
     offsets: OffsetType = Offset(accuracy=3),
     derivative: int = 1,
 ):
-    if not isinstance(argnum, int):
-        raise TypeError(f"argnum must be an integer, got {type(argnum)}")
-
     def wrapper(*args, **kwargs):
         # full args/kwargs
         flat_args, flat_treedef = jtu.tree_flatten(args[argnum])
-        args_ = list(args)
 
         def flat_func(*flat_args):
-            # flat args only
-            args_[argnum] = jtu.tree_unflatten(flat_treedef, flat_args)
-            return func(*args_, **kwargs)
+            return func(
+                *(
+                    args[:argnum]
+                    + (jtu.tree_unflatten(flat_treedef, flat_args),)
+                    + args[argnum + 1 :]
+                ),
+                **kwargs,
+            )
 
-        def perturb_flat_args(
-            flat_func,
-            *,
-            coeffs,
-            flat_offsets,
-            flat_argnum,
-            flat_step_size,
-        ):
-            dxs = flat_offsets * flat_step_size
-            den = flat_step_size**derivative
+        step_size_ = resolve_step_size(step_size, flat_treedef, derivative)
+        offsets_ = resolve_offsets(offsets, flat_treedef, derivative)
 
-            def flat_args_wrapper(*flat_args):
-                flat_arg = flat_args[flat_argnum]
-                is_array = hasattr(flat_arg, "shape")
-
-                # scalar perturbation
-                def scalar_perturb(h):
-                    flat_args_ = list(flat_args)
-                    flat_args_[flat_argnum] += h
-                    return flat_func(*flat_args_)
-
-                # should be much slower than jax.grad for large arrays
-                # but can be used for non-tracable code where jax.grad fails
-                def array_perturb(h):
-                    xflat = jnp.array(flat_args[flat_argnum].flatten())
-                    arange = jnp.arange(len(xflat))
-                    shape = flat_args[flat_argnum].shape
-                    flat_args_ = list(flat_args)
-
-                    def perturb_element(i):
-                        flat_args_[flat_argnum] = xflat.at[i].add(h).reshape(shape)
-                        return flat_func(*flat_args_)
-
-                    try:
-                        # in case of tracable code (jax code)
-                        result = jax.vmap(perturb_element)(arange)
-                    except jax.errors.TracerArrayConversionError:
-                        # non-tracable code e.g. numpy code
-                        result = jnp.array([perturb_element(h) for h in xflat])
-
-                    try:
-                        return result.reshape(shape)
-                    except Exception:
-                        # the function might return non-scalars
-                        raise TypeError("Non scalar-output.")
-
-                perturb = array_perturb if is_array else scalar_perturb
-                return sum([ci * perturb(dx) / den for ci, dx in zip(coeffs, dxs)])
-
-            return flat_args_wrapper
-
-        spec = dict(treedef=flat_treedef, derivative=derivative)
-        step_size_ = resolve_step_size(step_size, **spec)
-        offsets_ = resolve_offsets(offsets, **spec)
-
-        flat_result = [
-            perturb_flat_args(
+        flat_result = (
+            _perturb_flat_args(
                 flat_func=flat_func,
                 coeffs=generate_finitediff_coeffs(oi, derivative),
                 flat_offsets=oi,
                 flat_step_size=si,
                 flat_argnum=i,
+                derivative=derivative,
             )(*flat_args)
             for i, (oi, si) in enumerate(zip(offsets_, step_size_))
-        ]
+        )
 
         return jtu.tree_unflatten(flat_treedef, flat_result)
 
@@ -296,20 +331,21 @@ def value_and_fgrad(
         # fgrad(func, argnums=(0,1))
         # return a tuple of derivatives evaluated at each argnum
         # this behavior is similar to jax.grad(func, argnums=(...))
+        if not all(isinstance(ai, int) for ai in argnums):
+            raise TypeError(f"{argnums=} must be an integer or a tuple of integers")
+
         if isinstance(offsets, tuple):
             if len(offsets) != len(argnums):
                 raise AssertionError("offsets must have the same length as argnums")
-            offsets_ = offsets
         else:
-            offsets_ = (offsets,) * len(argnums)
+            offsets = (offsets,) * len(argnums)
 
         if isinstance(step_size, tuple):
             if len(step_size) != len(argnums):
                 raise AssertionError("step_size must have the same length as argnums")
-            step_size_ = step_size
 
         else:
-            step_size_ = (step_size,) * len(argnums)
+            step_size = (step_size,) * len(argnums)
 
         dfuncs = [
             _fgrad_along_argnum(
@@ -319,7 +355,7 @@ def value_and_fgrad(
                 offsets=oi,
                 derivative=derivative,
             )
-            for oi, si, ai in zip(offsets_, step_size_, argnums)
+            for oi, si, ai in zip(offsets, step_size, argnums)
         ]
 
         if has_aux:
