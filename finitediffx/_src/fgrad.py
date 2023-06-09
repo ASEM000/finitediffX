@@ -68,13 +68,13 @@ def _evaluate_func_at_shifted_steps_along_argnum(
     dxs = offsets * step_size
     den = step_size**derivative
 
-    def wrapper(*args, **kwargs):
-        if not hasattr(args[argnum], "shape"):
+    def wrapper(*flat_args):
+        if not hasattr(flat_args[argnum], "shape"):
             # scalar perturbation
             def perturb(h):
-                args_ = list(args)
-                args_[argnum] += h
-                return func(*args_, **kwargs)
+                flat_args_ = list(flat_args)
+                flat_args_[argnum] += h
+                return func(*flat_args_)
 
             return sum([coeff * perturb(dx) / den for coeff, dx in zip(coeffs, dxs)])
 
@@ -82,15 +82,15 @@ def _evaluate_func_at_shifted_steps_along_argnum(
         # should be much slower than jax.grad for large arrays
         # but can be used for non-tracable code where jax.grad fails
         def perturb(h):
-            xflat = jnp.array(args[argnum].flatten())
+            xflat = jnp.array(flat_args[argnum].flatten())
             arange = jnp.arange(len(xflat))
-            shape = args[argnum].shape
+            shape = flat_args[argnum].shape
 
             def perturb_element(i):
                 xflat_ = xflat.at[i].add(h)
-                args_ = list(args)
-                args_[argnum] = xflat_.reshape(shape)
-                return func(*args_, **kwargs)
+                flat_args_ = list(flat_args)
+                flat_args_[argnum] = xflat_.reshape(shape)
+                return func(*flat_args_)
 
             # `jax.vmap` can be used here and perform better
             # but it would fail in case of non-tracable code
