@@ -53,61 +53,6 @@ OffsetType = Union[jax.Array, Offset, PyTree]
 StepsizeType = Union[jax.Array, float, PyTree]
 
 
-def _evaluate_func_at_shifted_steps_along_argnum(
-    func: Callable[P, T],
-    *,
-    coeffs: jax.Array,
-    offsets: jax.Array,
-    argnum: int,
-    step_size: StepsizeType,
-    derivative: int,
-):
-    if not isinstance(argnum, int) or argnum < 0:
-        raise ValueError(f"argnum must be a non-negative integer, got {argnum}")
-
-    dxs = offsets * step_size
-    den = step_size**derivative
-
-    def wrapper(*flat_args):
-        if not hasattr(flat_args[argnum], "shape"):
-            # scalar perturbation
-            def perturb(h):
-                flat_args_ = list(flat_args)
-                flat_args_[argnum] += h
-                return func(*flat_args_)
-
-            return sum([coeff * perturb(dx) / den for coeff, dx in zip(coeffs, dxs)])
-
-        # elementwise perturbation
-        # should be much slower than jax.grad for large arrays
-        # but can be used for non-tracable code where jax.grad fails
-        def perturb(h):
-            xflat = jnp.array(flat_args[argnum].flatten())
-            arange = jnp.arange(len(xflat))
-            shape = flat_args[argnum].shape
-
-            def perturb_element(i):
-                xflat_ = xflat.at[i].add(h)
-                flat_args_ = list(flat_args)
-                flat_args_[argnum] = xflat_.reshape(shape)
-                return func(*flat_args_)
-
-            # `jax.vmap` can be used here and perform better
-            # but it would fail in case of non-tracable code
-            # may have try/excpet wiht `jax.errors.TracerArrayConversionError``
-            result = jnp.array([perturb_element(i) for i in arange])
-
-            # the function might return non-scalars
-            try:
-                return result.reshape(shape)
-            except Exception:
-                raise TypeError("Non scalar-output.")
-
-        return sum([coeff * perturb(dx) / den for coeff, dx in zip(coeffs, dxs)])
-
-    return wrapper
-
-
 def resolve_step_size(
     step_size: StepsizeType | Sequence[StepsizeType] | None,
     treedef: jtu.PyTreeDef,
@@ -184,30 +129,80 @@ def _fgrad_along_argnum(
         raise TypeError(f"argnum must be an integer, got {type(argnum)}")
 
     def wrapper(*args, **kwargs):
-        flat_args, arg_treedef = jtu.tree_flatten(args[argnum])
+        # full args/kwargs
+        flat_args, flat_treedef = jtu.tree_flatten(args[argnum])
         args_ = list(args)
 
-        def func_wrapper(*leaves):
-            args_[argnum] = jtu.tree_unflatten(arg_treedef, leaves)
+        def flat_func(*flat_args):
+            # flat args only
+            args_[argnum] = jtu.tree_unflatten(flat_treedef, flat_args)
             return func(*args_, **kwargs)
 
-        spec = dict(treedef=arg_treedef, derivative=derivative)
+        def perturb_flat_args(
+            flat_func,
+            *,
+            coeffs,
+            flat_offsets,
+            flat_argnum,
+            flat_step_size,
+        ):
+            dxs = flat_offsets * flat_step_size
+            den = flat_step_size**derivative
+
+            def flat_args_wrapper(*flat_args):
+                flat_arg = flat_args[flat_argnum]
+                is_array = hasattr(flat_arg, "shape")
+
+                # scalar perturbation
+                def scalar_perturb(h):
+                    flat_args_ = list(flat_args)
+                    flat_args_[flat_argnum] += h
+                    return flat_func(*flat_args_)
+
+                # should be much slower than jax.grad for large arrays
+                # but can be used for non-tracable code where jax.grad fails
+                def array_perturb(h):
+                    xflat = jnp.array(flat_args[flat_argnum].flatten())
+                    arange = jnp.arange(len(xflat))
+                    shape = flat_args[flat_argnum].shape
+
+                    def perturb_element(i):
+                        flat_args_ = list(flat_args)
+                        flat_args_[flat_argnum] = xflat.at[i].add(h).reshape(shape)
+                        return flat_func(*flat_args_)
+
+                    # `jax.vmap` can be used here and perform better
+                    # but it would fail in case of non-tracable code
+                    # may have try/excpet wiht `jax.errors.TracerArrayConversionError``
+                    result = jnp.array([perturb_element(i) for i in arange])
+
+                    # the function might return non-scalars
+                    try:
+                        return result.reshape(shape)
+                    except Exception:
+                        raise TypeError("Non scalar-output.")
+
+                perturb = array_perturb if is_array else scalar_perturb
+                return sum([ci * perturb(dx) / den for ci, dx in zip(coeffs, dxs)])
+
+            return flat_args_wrapper
+
+        spec = dict(treedef=flat_treedef, derivative=derivative)
         step_size_ = resolve_step_size(step_size, **spec)
         offsets_ = resolve_offsets(offsets, **spec)
 
         flat_result = [
-            _evaluate_func_at_shifted_steps_along_argnum(
-                func=func_wrapper,
+            perturb_flat_args(
+                flat_func=flat_func,
                 coeffs=generate_finitediff_coeffs(oi, derivative),
-                offsets=oi,
-                step_size=si,
-                derivative=derivative,
-                argnum=i,
+                flat_offsets=oi,
+                flat_step_size=si,
+                flat_argnum=i,
             )(*flat_args)
             for i, (oi, si) in enumerate(zip(offsets_, step_size_))
         ]
 
-        return jtu.tree_unflatten(arg_treedef, flat_result)
+        return jtu.tree_unflatten(flat_treedef, flat_result)
 
     return wrapper
 
