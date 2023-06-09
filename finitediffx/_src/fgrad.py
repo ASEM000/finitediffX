@@ -124,6 +124,7 @@ def _fgrad_along_argnum(
     step_size: StepsizeType | None = None,
     offsets: OffsetType = Offset(accuracy=3),
     derivative: int = 1,
+    vectorized: bool = True,
 ):
     if not isinstance(argnum, int):
         raise TypeError(f"argnum must be an integer, got {type(argnum)}")
@@ -165,16 +166,23 @@ def _fgrad_along_argnum(
                     xflat = jnp.array(flat_args[flat_argnum].flatten())
                     arange = jnp.arange(len(xflat))
                     shape = flat_args[flat_argnum].shape
+                    flat_args_ = list(flat_args)
 
                     def perturb_element(i):
-                        flat_args_ = list(flat_args)
                         flat_args_[flat_argnum] = xflat.at[i].add(h).reshape(shape)
                         return flat_func(*flat_args_)
 
                     # `jax.vmap` can be used here and perform better
                     # but it would fail in case of non-tracable code
                     # may have try/excpet wiht `jax.errors.TracerArrayConversionError``
-                    result = jnp.array([perturb_element(i) for i in arange])
+
+                    # TODO: improve this
+                    # result = jnp.array([perturb_element(i) for i in arange])
+
+                    if vectorized:
+                        result = jax.vmap(perturb_element)(arange)
+                    else:
+                        result = jnp.array([perturb_element(i) for i in arange])
 
                     # the function might return non-scalars
                     try:
@@ -208,14 +216,15 @@ def _fgrad_along_argnum(
 
 
 def value_and_fgrad(
-    func: Callable,
+    func: Callable[P, T],
     *,
     argnums: int | tuple[int, ...] = 0,
     step_size: StepsizeType | None = None,
     offsets: OffsetType = Offset(accuracy=3),
     derivative: int = 1,
     has_aux: bool = False,
-) -> Callable:
+    vectorized: bool = True,
+):
     """Finite difference derivative of a function with respect to one of its arguments.
     similar to jax.grad but with finite difference approximation
 
@@ -235,6 +244,8 @@ def value_and_fgrad(
         has_aux: whether the function returns an auxiliary output. Defaults to False.
             If True, the derivative function will return a tuple of the form:
             ((value,aux), derivative) otherwise (value, derivative)
+        vectorized: whether to vectorize the finite difference perturbation.
+            Defaults to True. Should be set to False if the function is not jittable.
 
     Returns:
         Value and derivative of the function if `has_aux` is False.
@@ -273,6 +284,7 @@ def value_and_fgrad(
             step_size=step_size,
             offsets=offsets,
             derivative=derivative,
+            vectorized=vectorized,
         )
 
         if has_aux is True:
@@ -316,6 +328,7 @@ def value_and_fgrad(
                 step_size=si,
                 offsets=oi,
                 derivative=derivative,
+                vectorized=vectorized,
             )
             for oi, si, ai in zip(offsets_, step_size_, argnums)
         ]
@@ -348,6 +361,7 @@ def fgrad(
     offsets: OffsetType = Offset(accuracy=3),
     derivative: int = 1,
     has_aux: bool = False,
+    vectorized: bool = True,
 ) -> Callable:
     """Finite difference derivative of a function with respect to one of its arguments.
     similar to jax.grad but with finite difference approximation
@@ -368,6 +382,8 @@ def fgrad(
         has_aux: whether the function returns an auxiliary output. Defaults to False.
             If True, the derivative function will return a tuple of the form:
             (derivative, aux) otherwise it will return only the derivative.
+        vectorized: whether to vectorize the derivative function. Defaults to True.
+            Should be set to False if the function is not jit-able.
 
     Returns:
         Derivative of the function if `has_aux` is False, otherwise a tuple of
@@ -398,6 +414,7 @@ def fgrad(
         offsets=offsets,
         derivative=derivative,
         has_aux=has_aux,
+        vectorized=vectorized,
     )
 
     if has_aux:
@@ -479,7 +496,14 @@ def define_fdjvp(
         offsets_ = resolve_offsets(offsets, **kwargs)
         primal_out = func(*primals)
         tangent_out = sum(
-            fgrad(func, argnums=i, step_size=si, offsets=oi)(*primals) * ti
+            fgrad(
+                func,
+                argnums=i,
+                step_size=si,
+                offsets=oi,
+                vectorized=False,
+            )(*primals)
+            * ti
             for i, (si, oi, ti) in enumerate(zip(step_size_, offsets_, tangents))
         )
         return jnp.array(primal_out), jnp.array(tangent_out)
