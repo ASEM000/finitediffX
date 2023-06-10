@@ -30,7 +30,6 @@ __all__ = ("fgrad", "Offset", "define_fdjvp", "value_and_fgrad")
 
 P = ParamSpec("P")
 T = TypeVar("T")
-constant_treedef = jtu.tree_structure(0)
 PyTree = Any
 
 
@@ -118,86 +117,6 @@ def resolve_offsets(
     )
 
 
-def _array_perturb(
-    *,
-    flat_func: Callable,
-    flat_args: tuple[Any, ...],
-    flat_argnum: int,
-    h: float,
-) -> jax.Array:
-    # should be much slower than jax.grad for large arrays
-    # but can be used for non-tracable code where jax.grad fails
-    indices = jnp.arange(flat_args[flat_argnum].size)
-    shape = flat_args[flat_argnum].shape
-    flat_array = jnp.array(flat_args[flat_argnum].reshape(-1))
-
-    def perturb_element(index):
-        return flat_func(
-            *(
-                flat_args[:flat_argnum]
-                + (flat_array.at[index].add(h).reshape(shape),)
-                + flat_args[flat_argnum + 1 :]
-            )
-        )
-
-    try:
-        # in case of tracable code (jax code)
-        result = jax.vmap(perturb_element)(indices)
-    except jax.errors.TracerArrayConversionError:
-        # non-tracable code e.g. numpy code
-        result = jnp.array([perturb_element(index) for index in indices])
-
-    try:
-        return result.reshape(shape)
-    except Exception:
-        # the function might return non-scalars
-        raise TypeError("Non scalar-output.")
-
-
-def _array_average_perturb(
-    *,
-    flat_func: Callable,
-    flat_args: tuple[Any, ...],
-    flat_argnum: int,
-    h: float,
-) -> jax.Array:
-    # perturb the array all at once and average the result
-    # faster than _array_perturb for large arrays but gives average gradient
-    shape = flat_args[flat_argnum].shape
-    result = flat_func(
-        *(
-            flat_args[:flat_argnum]
-            + ((flat_args[flat_argnum] + h).reshape(shape),)
-            + flat_args[flat_argnum + 1 :]
-        )
-    )
-
-    try:
-        result = jnp.broadcast_to(result, shape)
-        result = result / result.size
-        return result
-    except Exception:
-        # the function might return non-scalars
-        raise TypeError("Non scalar-output.")
-
-
-# scalar perturbation
-def _scalar_perturb(
-    *,
-    flat_func: Callable,
-    flat_args: tuple[Any, ...],
-    flat_argnum: int,
-    h: float,
-):
-    return flat_func(
-        *(
-            flat_args[:flat_argnum]
-            + (flat_args[flat_argnum] + h,)
-            + flat_args[flat_argnum + 1 :]
-        )
-    )
-
-
 def _perturb_flat_args(
     *,
     flat_func: Callable,
@@ -209,21 +128,73 @@ def _perturb_flat_args(
     average_gradients: bool = False,
 ):
     def flat_args_wrapper(*flat_args):
+        def scalar_perturb(*, h: float):
+            return flat_func(
+                *(
+                    flat_args[:flat_argnum]
+                    + (flat_args[flat_argnum] + h,)
+                    + flat_args[flat_argnum + 1 :]
+                )
+            )
+
+        def array_perturb(*, h: float) -> jax.Array:
+            # should be much slower than jax.grad for large arrays
+            # but can be used for non-tracable code where jax.grad fails
+            indices = jnp.arange(flat_args[flat_argnum].size)
+            shape = flat_args[flat_argnum].shape
+            flat_array = jnp.array(flat_args[flat_argnum].reshape(-1))
+
+            def perturb_element(index):
+                return flat_func(
+                    *(
+                        flat_args[:flat_argnum]
+                        + (flat_array.at[index].add(h).reshape(shape),)
+                        + flat_args[flat_argnum + 1 :]
+                    )
+                )
+
+            try:
+                # in case of tracable code (jax code)
+                result = jax.vmap(perturb_element)(indices)
+            except jax.errors.TracerArrayConversionError:
+                # non-tracable code e.g. numpy code
+                result = jnp.array([perturb_element(index) for index in indices])
+
+            try:
+                return result.reshape(shape)
+            except Exception:
+                # the function might return non-scalars
+                raise TypeError("Non scalar-output.")
+
+        def array_average_perturb(*, h: float) -> jax.Array:
+            # perturb the array all at once and average the result
+            # faster than _array_perturb for large arrays but gives
+            # average gradient
+            shape = flat_args[flat_argnum].shape
+            result = flat_func(
+                *(
+                    flat_args[:flat_argnum]
+                    + ((flat_args[flat_argnum] + h),)
+                    + flat_args[flat_argnum + 1 :]
+                )
+            )
+
+            try:
+                result = jnp.broadcast_to(result, shape)
+                result = result / result.size
+                return result
+            except Exception:
+                # the function might return non-scalars
+                raise TypeError("Non scalar-output.")
+
         perturb_func = (
-            (_array_average_perturb if average_gradients else _array_perturb)
+            (array_average_perturb if average_gradients else array_perturb)
             if isinstance(flat_args[flat_argnum], (np.ndarray, jax.Array))
-            else _scalar_perturb
+            else scalar_perturb
         )
 
         return sum(
-            coeff
-            * perturb_func(
-                flat_func=flat_func,
-                flat_args=flat_args,
-                flat_argnum=flat_argnum,
-                h=dx,
-            )
-            / flat_step_size**derivative
+            coeff * perturb_func(h=dx) / flat_step_size**derivative
             for coeff, dx in zip(coeffs, flat_offsets * flat_step_size)
         )
 
