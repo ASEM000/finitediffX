@@ -21,6 +21,7 @@ from typing import Any, Callable, Sequence, TypeVar, Union
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import numpy as np
 from typing_extensions import ParamSpec
 
 from finitediffx._src.utils import _generate_central_offsets, generate_finitediff_coeffs
@@ -117,8 +118,6 @@ def resolve_offsets(
     )
 
 
-# should be much slower than jax.grad for large arrays
-# but can be used for non-tracable code where jax.grad fails
 def _array_perturb(
     *,
     flat_func: Callable,
@@ -126,20 +125,17 @@ def _array_perturb(
     flat_argnum: int,
     h: float,
 ) -> jax.Array:
+    # should be much slower than jax.grad for large arrays
+    # but can be used for non-tracable code where jax.grad fails
     indices = jnp.arange(flat_args[flat_argnum].size)
     shape = flat_args[flat_argnum].shape
+    flat_array = jnp.array(flat_args[flat_argnum].reshape(-1))
 
     def perturb_element(index):
         return flat_func(
             *(
                 flat_args[:flat_argnum]
-                + (
-                    jnp.array(flat_args[flat_argnum])
-                    .reshape(-1)
-                    .at[index]
-                    .add(h)
-                    .reshape(shape),
-                )
+                + (flat_array.at[index].add(h).reshape(shape),)
                 + flat_args[flat_argnum + 1 :]
             )
         )
@@ -153,6 +149,33 @@ def _array_perturb(
 
     try:
         return result.reshape(shape)
+    except Exception:
+        # the function might return non-scalars
+        raise TypeError("Non scalar-output.")
+
+
+def _array_average_perturb(
+    *,
+    flat_func: Callable,
+    flat_args: tuple[Any, ...],
+    flat_argnum: int,
+    h: float,
+) -> jax.Array:
+    # perturb the array all at once and average the result
+    # faster than _array_perturb for large arrays but gives average gradient
+    shape = flat_args[flat_argnum].shape
+    result = flat_func(
+        *(
+            flat_args[:flat_argnum]
+            + ((flat_args[flat_argnum] + h).reshape(shape),)
+            + flat_args[flat_argnum + 1 :]
+        )
+    )
+
+    try:
+        result = jnp.broadcast_to(result, shape)
+        result = result / result.size
+        return result
     except Exception:
         # the function might return non-scalars
         raise TypeError("Non scalar-output.")
@@ -183,13 +206,18 @@ def _perturb_flat_args(
     flat_argnum: int,
     flat_step_size: jax.Array,
     derivative: int,
+    average_gradients: bool = False,
 ):
     def flat_args_wrapper(*flat_args):
-        is_array = hasattr(flat_args[flat_argnum], "shape")
-        perturb = _array_perturb if is_array else _scalar_perturb
+        perturb_func = (
+            (_array_average_perturb if average_gradients else _array_perturb)
+            if isinstance(flat_args[flat_argnum], (np.ndarray, jax.Array))
+            else _scalar_perturb
+        )
+
         return sum(
             coeff
-            * perturb(
+            * perturb_func(
                 flat_func=flat_func,
                 flat_args=flat_args,
                 flat_argnum=flat_argnum,
@@ -209,6 +237,7 @@ def _fgrad_along_argnum(
     step_size: StepsizeType | None = None,
     offsets: OffsetType = Offset(accuracy=3),
     derivative: int = 1,
+    average_gradients: bool = False,
 ):
     def wrapper(*args, **kwargs):
         # full args/kwargs
@@ -235,6 +264,7 @@ def _fgrad_along_argnum(
                 flat_step_size=si,
                 flat_argnum=i,
                 derivative=derivative,
+                average_gradients=average_gradients,
             )(*flat_args)
             for i, (oi, si) in enumerate(zip(offsets_, step_size_))
         )
@@ -252,6 +282,7 @@ def value_and_fgrad(
     offsets: OffsetType = Offset(accuracy=3),
     derivative: int = 1,
     has_aux: bool = False,
+    average_gradients: bool = False,
 ):
     """Finite difference derivative of a function with respect to one of its arguments.
     similar to jax.grad but with finite difference approximation
@@ -272,6 +303,8 @@ def value_and_fgrad(
         has_aux: whether the function returns an auxiliary output. Defaults to False.
             If True, the derivative function will return a tuple of the form:
             ((value,aux), derivative) otherwise (value, derivative)
+        average_gradients: whether to average the array gradients. Yields faster
+            results. Defaults to False.
 
     Returns:
         Value and derivative of the function if `has_aux` is False.
@@ -310,6 +343,7 @@ def value_and_fgrad(
             step_size=step_size,
             offsets=offsets,
             derivative=derivative,
+            average_gradients=average_gradients,
         )
 
         if has_aux is True:
@@ -354,6 +388,7 @@ def value_and_fgrad(
                 step_size=si,
                 offsets=oi,
                 derivative=derivative,
+                average_gradients=average_gradients,
             )
             for oi, si, ai in zip(offsets, step_size, argnums)
         ]
@@ -386,6 +421,7 @@ def fgrad(
     offsets: OffsetType = Offset(accuracy=3),
     derivative: int = 1,
     has_aux: bool = False,
+    average_gradients: bool = False,
 ) -> Callable:
     """Finite difference derivative of a function with respect to one of its arguments.
     similar to jax.grad but with finite difference approximation
@@ -406,6 +442,8 @@ def fgrad(
         has_aux: whether the function returns an auxiliary output. Defaults to False.
             If True, the derivative function will return a tuple of the form:
             (derivative, aux) otherwise it will return only the derivative.
+        average_gradients: whether to average the array gradients. Yields faster
+            results. Defaults to False.
 
     Returns:
         Derivative of the function if `has_aux` is False, otherwise a tuple of
@@ -436,6 +474,7 @@ def fgrad(
         offsets=offsets,
         derivative=derivative,
         has_aux=has_aux,
+        average_gradients=average_gradients,
     )
 
     if has_aux:
