@@ -168,7 +168,7 @@ def _perturb_flat_args(
 
         def array_average_perturb(*, h: float) -> jax.Array:
             # perturb the array all at once and average the result
-            # faster than _array_perturb for large arrays but gives
+            # faster than array_perturb for large arrays but gives
             # average gradient
             shape = flat_args[flat_argnum].shape
             result = flat_func(
@@ -527,13 +527,7 @@ def define_fdjvp(
         offsets_ = resolve_offsets(offsets, **kwargs)
         primal_out = func(*primals)
         tangent_out = sum(
-            fgrad(
-                func,
-                argnums=i,
-                step_size=si,
-                offsets=oi,
-            )(*primals)
-            * ti
+            fgrad(func, argnums=i, step_size=si, offsets=oi)(*primals) * ti
             for i, (si, oi, ti) in enumerate(zip(step_size_, offsets_, tangents))
         )
         return jnp.array(primal_out), jnp.array(tangent_out)

@@ -733,7 +733,7 @@ def curl(
         )
 
     raise ValueError(
-        f"`curl` is only implemented for 2D and 3D vector fields, got {array.ndim}D"
+        f"`curl` is only implemented for 2D and 3D vector fields, got {array.ndim=}"
         "for 2D vector fields, the leading axis must have a shape=2, "
         "for 3D vector fields, the leading axis must have a shape=3"
     )

@@ -15,6 +15,7 @@
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ASEM000/FiniteDiffX/blob/main/FiniteDiffX%20Examples.ipynb)
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/m/ASEM000/FiniteDiffX)
 ![PyPI](https://img.shields.io/pypi/v/FiniteDiffX)
+[![CodeFactor](https://www.codefactor.io/repository/github/asem000/finitediffx/badge)](https://www.codefactor.io/repository/github/asem000/finitediffx)
 
 </h5>
 
