@@ -140,7 +140,8 @@ def _perturb_flat_args(
         def array_perturb(*, h: float) -> jax.Array:
             # should be much slower than jax.grad for large arrays
             # but can be used for non-tracable code where jax.grad fails
-            indices = jnp.arange(flat_args[flat_argnum].size)
+            size = flat_args[flat_argnum].size
+            indices = jnp.arange(size)
             shape = flat_args[flat_argnum].shape
             flat_array = jnp.array(flat_args[flat_argnum].reshape(-1))
 
@@ -160,17 +161,17 @@ def _perturb_flat_args(
                 # non-tracable code e.g. numpy code
                 result = jnp.array([perturb_element(index) for index in indices])
 
-            try:
-                return result.reshape(shape)
-            except Exception:
-                # the function might return non-scalars
+            if result.size > size:
                 raise TypeError("Non scalar-output.")
+
+            return result.reshape(shape)
 
         def array_average_perturb(*, h: float) -> jax.Array:
             # perturb the array all at once and average the result
             # faster than array_perturb for large arrays but gives
             # average gradient
             shape = flat_args[flat_argnum].shape
+            size = flat_args[flat_argnum].size
             result = flat_func(
                 *(
                     flat_args[:flat_argnum]
@@ -179,13 +180,12 @@ def _perturb_flat_args(
                 )
             )
 
-            try:
-                result = jnp.broadcast_to(result, shape)
-                result = result / result.size
-                return result
-            except Exception:
-                # the function might return non-scalars
+            if result.size > size:
                 raise TypeError("Non scalar-output.")
+
+            result = jnp.broadcast_to(result, shape)
+            result = result / result.size
+            return result
 
         perturb_func = (
             (array_average_perturb if average_gradients else array_perturb)
