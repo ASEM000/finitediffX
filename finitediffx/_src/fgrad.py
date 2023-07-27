@@ -35,7 +35,8 @@ PyTree = Any
 
 @dc.dataclass(frozen=True)
 class Offset:
-    """Convinience class for finite difference offsets used inside `fgrad`
+    """Convinience class for finite difference offsets used inside :func:`.fgrad`
+    :func:`.value_and_fgrad`.
 
     Args:
         accuracy: The accuracy of the finite difference scheme. Must be >=2.
@@ -256,7 +257,8 @@ def value_and_fgrad(
     average_gradients: bool = False,
 ):
     """Finite difference derivative of a function with respect to one of its arguments.
-    similar to jax.grad but with finite difference approximation
+
+    Similar to ``jax.value_and_grad`` but with finite difference approximation
 
     Args:
         func: function to differentiate
@@ -264,22 +266,25 @@ def value_and_fgrad(
             If a tuple is passed, the function is differentiated with respect to
             all the arguments in the tuple.
         step_size: step size for the finite difference stencil. If `None`, the step size
-            is set to `(2) ** (-23 / (2 * derivative))`
+            is set to ``(2) ** (-23 / (2 * derivative))``
         offsets: offsets for the finite difference stencil. Accepted types are:
-            - `jax.Array` defining location of function evaluation points.
-            - `Offset` with accuracy field to automatically generate offsets.
-            - pytree of `jax.Array`/`Offset` to define offsets for each argument
-                of the same pytree structure as argument defined by `argnums`.
+
+            - ``jax.Array`` defining location of function evaluation points.
+            - :class:`Offset` with accuracy field to automatically generate offsets.
+            - pytree of ``jax.Array``/ :class:`.Offset` to define offsets for
+              each argument of the same pytree structure as argument defined
+              by ``argnums``.
+
         derivative: derivative order. Defaults to 1.
-        has_aux: whether the function returns an auxiliary output. Defaults to False.
-            If True, the derivative function will return a tuple of the form:
-            ((value,aux), derivative) otherwise (value, derivative)
+        has_aux: whether the function returns an auxiliary output. Defaults to
+            ``False``. If True, the derivative function will return a tuple of
+            the form: ((value,aux), derivative) otherwise (value, derivative)
         average_gradients: whether to average the array gradients. Yields faster
-            results. Defaults to False.
+            results. Defaults to ``False``.
 
     Returns:
-        Value and derivative of the function if `has_aux` is False.
-        If `has_aux` is True, the derivative function will return a tuple of the form:
+        Value and derivative of the function if ``has_aux`` is ``False``.
+        If ``has_aux`` is True, the derivative function will return a tuple of the form:
         ((value,aux), derivative)
 
     Example:
@@ -395,7 +400,8 @@ def fgrad(
     average_gradients: bool = False,
 ) -> Callable:
     """Finite difference derivative of a function with respect to one of its arguments.
-    similar to jax.grad but with finite difference approximation
+
+    Similar to ``jax.grad`` but with finite difference approximation.
 
     Args:
         func: function to differentiate
@@ -405,19 +411,20 @@ def fgrad(
         step_size: step size for the finite difference stencil. If `None`, the step size
             is set to `(2) ** (-23 / (2 * derivative))`
         offsets: offsets for the finite difference stencil. Accepted types are:
-            - `jax.Array` defining location of function evaluation points.
-            - `Offset` with accuracy field to automatically generate offsets.
-            - pytree of `jax.Array`/`Offset` to define offsets for each argument
-                of the same pytree structure as argument defined by `argnums`.
+            - ``jax.Array`` defining location of function evaluation points.
+            - :class:`.Offset` with accuracy field to automatically generate offsets.
+            - pytree of ``jax.Array``/:class:`.Offset` to define offsets for
+              each argument of the same pytree structure as argument defined
+              by ``argnums``.
         derivative: derivative order. Defaults to 1.
-        has_aux: whether the function returns an auxiliary output. Defaults to False.
-            If True, the derivative function will return a tuple of the form:
+        has_aux: whether the function returns an auxiliary output. Defaults to ``False``.
+            If ``True``, the derivative function will return a tuple of the form:
             (derivative, aux) otherwise it will return only the derivative.
         average_gradients: whether to average the array gradients. Yields faster
-            results. Defaults to False.
+            results. Defaults to ``False``.
 
     Returns:
-        Derivative of the function if `has_aux` is False, otherwise a tuple of
+        Derivative of the function if ``has_aux`` is ``False``, otherwise a tuple of
         the form: (derivative, aux)
 
     Example:
@@ -475,21 +482,21 @@ def define_fdjvp(
     Args:
         func: function to define the JVP rule for
         offsets: offsets for the finite difference stencil. Accepted types are:
-            - `jax.Array` defining location of function evaluation points.
-            - `Offset` with accuracy field to automatically generate offsets.
-            - tuple of `Offset` or `jax.Array` defining offsets for each argument.
+            - ``jax.Array`` defining location of function evaluation points.
+            - :class:`.Offset` with accuracy field to automatically generate offsets.
+            - tuple of `Offset` or ``jax.Array`` defining offsets for each argument.
         step_size: step size for the finite difference stencil. Accepted types are:
-            - `float` defining the step size for all arguments.
-            - `tuple` of `float` defining the step size for each argument.
-            - `None` to use the default step size for each argument.
+            - ``float`` defining the step size for all arguments.
+            - ``tuple`` of ``float`` defining the step size for each argument.
+            - ``None`` to use the default step size for each argument.
 
     Returns:
         Callable: function with JVP rule defined using finite difference.
 
     Note:
-        - This function is motivated by [`JEP`](https://github.com/google/jax/issues/15425)
-        - This function can be used with `jax.pure_callback` to define the JVP
-            rule for a function that is not differentiable by JAX.
+        - This function is motivated by [``JEP``](https://github.com/google/jax/issues/15425)
+        - This function can be used with ``jax.pure_callback`` to define the JVP
+            rule for a function that is not differentiable by ``jax``.
 
         Example:
             >>> import jax

@@ -207,27 +207,29 @@ def difference(
         ...     print(fdx.difference(x, accuracy=1))
         [ 0.1   0.5   0.85  1.15  1.25  0.75  0.75  1.    6.5  12.  ]
 
-
     Note:
         Handling of boundary points is done by applying forward/backward difference
         to the first/last element and central difference to the interior elements.
         For the previous example, the following steps are performed:
 
-        - apply forward difference to the first element with accuracy 1
-        x_1 = 1.3-1.2 = 0.1
+        - Apply forward difference to the first element with accuracy
 
-        - apply central difference to interior elements with accuracy 2
-        x_2 = (2.2-1.2)/2 = 0.5
-        x_3 = (3.-1.3)/2 = 0.85
-        x_4 = (4.5-2.2)/2 = 1.15
-        x_5 = (5.5-3.)/2 = 1.25
-        x_6 = (6.-4.5)/2 = 0.75
-        x_7 = (7.-5.5)/2 = 0.75
-        x_8 = (8.-6.)/2 = 1.
-        x_9 = (20.-7.)/2 = 6.5
+            - ``x_1 = 1.3-1.2 = 0.1``
 
-        - apply backward difference to the last element with accuracy 1
-        x_10 = 20.-8. = 12.
+        - Apply central difference to interior elements with accuracy 2
+
+            - ``x_2 = (2.2-1.2)/2 = 0.5``
+            - ``x_3 = (3.-1.3)/2 = 0.85``
+            - ``x_4 = (4.5-2.2)/2 = 1.15``
+            - ``x_5 = (5.5-3.)/2 = 1.25``
+            - ``x_6 = (6.-4.5)/2 = 0.75``
+            - ``x_7 = (7.-5.5)/2 = 0.75``
+            - ``x_8 = (8.-6.)/2 = 1.``
+            - ``x_9 = (20.-7.)/2 = 6.5``
+
+        - Apply backward difference to the last element with accuracy 1
+
+            - ``x_10 = 20.-8. = 12.``
     """
     size = array.shape[axis]
 
@@ -383,7 +385,7 @@ def jacobian(
         ...    F1 = X**2 * Y
         ...    F2 = 5 * X + jnp.sin(Y)
         ...    F = jnp.stack([F1, F2], axis=0)
-        ...    JF = jacobian(F, accuracy=4, step_size=(dx, dy))
+        ...    JF = fdx.jacobian(F, accuracy=4, step_size=(dx, dy))
         ...    JF_true = jnp.array([[2 * X * Y, X**2], [5*jnp.ones_like(X), jnp.cos(Y)]])
         ...    npt.assert_allclose(JF, JF_true, atol=1e-7)
     """
@@ -431,7 +433,7 @@ def divergence(
         >>> F1 = X**2 + Y**3
         >>> F2 = X**4 + Y**3
         >>> F = jnp.stack([F1, F2], axis=0) # 2D vector field F = (F1, F2)
-        >>> divZ = divergence(F,step_size=(dx,dy), accuracy=7, keepdims=False)
+        >>> divZ = fdx.divergence(F,step_size=(dx,dy), accuracy=7, keepdims=False)
         >>> divZ_true = 2*X + 3*Y**2  # (dF1/dx) + (dF2/dy)
         >>> npt.assert_allclose(divZ, divZ_true, atol=5e-4)
     """

@@ -1,5 +1,5 @@
 <h5 align="center">
-<img width="200px" src="assets/finitediffx_logo.svg"> <br>
+<img width="200px" src="assets/logo.svg"> <br>
 
 <br>
 
@@ -20,22 +20,6 @@
 </h5>
 
 Differentiable finite difference tools in `jax`
-Implements :
-
-**`Array` accepting functions:**
-
-- `difference(array, axis, accuracy, step_size, method, derivative)`
-- `gradient(array, accuracy, method, step_size)`
-- `jacobian(array, accuracy, method, step_size)`
-- `divergence(array, accuracy, step_size, method, keepdims)`
-- `hessian(array, accuracy, method, step_size)`
-- `laplacian(array, accuracy, method, step_size)`
-- `curl(array, step_size, method, keep_dims)`
-
-**Function transformation:**
-
-- `fgrad`, and `value_and_fgrad` : similar to `jax.grad` and `jax.value_and_grad` but with finite difference approximation.
-- `define_fdjvp`: define `custom_jvp` rules using finite difference approximation (see example below).
 
 ## 🛠️ Installation<a id="installation"></a>
 
