@@ -411,15 +411,17 @@ def fgrad(
         step_size: step size for the finite difference stencil. If `None`, the step size
             is set to `(2) ** (-23 / (2 * derivative))`
         offsets: offsets for the finite difference stencil. Accepted types are:
+
             - ``jax.Array`` defining location of function evaluation points.
             - :class:`.Offset` with accuracy field to automatically generate offsets.
             - pytree of ``jax.Array``/:class:`.Offset` to define offsets for
               each argument of the same pytree structure as argument defined
               by ``argnums``.
+
         derivative: derivative order. Defaults to 1.
-        has_aux: whether the function returns an auxiliary output. Defaults to ``False``.
-            If ``True``, the derivative function will return a tuple of the form:
-            (derivative, aux) otherwise it will return only the derivative.
+        has_aux: whether the function returns an auxiliary output. Defaults to
+            ``False``. If ``True``, the derivative function will return a tuple
+            of the form: (derivative, aux) otherwise it will return only the derivative.
         average_gradients: whether to average the array gradients. Yields faster
             results. Defaults to ``False``.
 
@@ -431,16 +433,13 @@ def fgrad(
         >>> import finitediffx as fdx
         >>> import jax
         >>> import jax.numpy as jnp
-
         >>> def f(x, y):
         ...    return x**2 + y**2
-
         >>> df=fdx.fgrad(
         ...    func=f,
         ...    argnums=1,  # differentiate with respect to y
         ...    offsets=fdx.Offset(accuracy=2)  # use 2nd order accurate finite difference
         ... )
-
         >>> df(2.0, 3.0)
         Array(6., dtype=float32)
 
